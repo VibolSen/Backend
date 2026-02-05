@@ -44,6 +44,12 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Custom Request Logger Middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  next();
+});
+
 // Swagger Configuration
 const swaggerOptions = {
   definition: {
@@ -86,6 +92,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/dashboards', dashboardRoutes);
+
+// Legacy/Short Alias for /api/auth/me
+app.use('/api/me', authRoutes);
 app.use('/api/exam-submissions', examSubmissionRoutes);
 app.use('/api/gradebook', gradebookRoutes);
 app.use('/api/certificates', certificateRoutes);
@@ -100,6 +109,19 @@ app.get('/', (req, res) => {
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Backend is healthy' });
+});
+
+// Catch-all 404 Handler
+app.use((req, res) => {
+  console.warn(`[404 Not Found] - ${req.method} ${req.url}`);
+  res.status(404).json({ error: "Route not found", path: req.url });
+});
+
+// Global Error Handler
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error(`[500 Server Error] - ${req.method} ${req.url}`);
+  console.error(err.stack);
+  res.status(500).json({ error: "Internal Server Error", message: err.message });
 });
 
 app.listen(PORT, () => {

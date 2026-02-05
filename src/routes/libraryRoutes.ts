@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getLibraryResources, createLibraryResource, deleteLibraryResource } from '../controllers/libraryController';
+import { getLibraryResources, createLibraryResource, deleteLibraryResource, updateLibraryResource } from '../controllers/libraryController';
 
 const router = Router();
 
@@ -47,6 +47,7 @@ const router = Router();
  */
 router.get('/', getLibraryResources);
 router.post('/', createLibraryResource);
+router.put('/:id', updateLibraryResource);
 router.delete('/:id', deleteLibraryResource);
 
 export default router;

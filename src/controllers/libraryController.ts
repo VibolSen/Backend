@@ -50,3 +50,27 @@ export const deleteLibraryResource = async (req: Request, res: Response) => {
     res.status(500).json({ error: "Failed to delete library resource" });
   }
 };
+
+export const updateLibraryResource = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { title, author, coverImage, department, description, publicationYear } = req.body;
+
+    const updatedResource = await prisma.libraryResource.update({
+      where: { id },
+      data: {
+        title,
+        author,
+        coverImage,
+        department,
+        description,
+        publicationYear: publicationYear ? parseInt(String(publicationYear)) : undefined
+      },
+    });
+
+    res.json(updatedResource);
+  } catch (err) {
+    console.error("Failed to update library resource:", err);
+    res.status(500).json({ error: "Failed to update library resource" });
+  }
+};

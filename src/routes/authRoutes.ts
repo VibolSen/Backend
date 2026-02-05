@@ -92,6 +92,11 @@ router.post('/register', register);
  *         description: User not found
  */
 router.get('/me', authenticateToken, getMe);
+router.get('/me/schedules', authenticateToken, (req: any, res: any) => {
+    // Redirect or proxy to schedule controller logic
+    // For simplicity, we can implement it here or import the function
+    res.redirect(307, `/api/schedule?teacherId=${req.user.userId}`);
+});
 
 /**
  * @swagger

@@ -1,0 +1,108 @@
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import swaggerUi from 'swagger-ui-express';
+import swaggerJsdoc from 'swagger-jsdoc';
+import studentRoutes from './routes/studentRoutes';
+import teacherRoutes from './routes/teacherRoutes';
+import facultyRoutes from './routes/facultyRoutes';
+import departmentRoutes from './routes/departmentRoutes';
+import courseRoutes from './routes/courseRoutes';
+import { getCourseAnalytics } from './controllers/courseController';
+import groupRoutes from './routes/groupRoutes';
+import assignmentRoutes from './routes/assignmentRoutes';
+import examRoutes from './routes/examRoutes';
+import attendanceRoutes from './routes/attendanceRoutes';
+import scheduleRoutes from './routes/scheduleRoutes';
+import submissionRoutes from './routes/submissionRoutes';
+import utilRoutes from './routes/utilRoutes';
+import libraryRoutes from './routes/libraryRoutes';
+import announcementRoutes from './routes/announcementRoutes';
+import financialRoutes from './routes/financialRoutes';
+import careerRoutes from './routes/careerRoutes';
+import authRoutes from './routes/authRoutes';
+import userRoutes from './routes/userRoutes';
+import enrollmentRoutes from './routes/enrollmentRoutes';
+import dashboardRoutes from './routes/dashboardRoutes';
+import examSubmissionRoutes from './routes/examSubmissionRoutes';
+import gradebookRoutes from './routes/gradebookRoutes';
+import certificateRoutes from './routes/certificateRoutes';
+import hrRoutes from './routes/hrRoutes';
+import careersRoutes from './routes/careersRoutes';
+
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+// CORS Configuration - Allow Frontend to access Backend
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+app.use(express.json());
+
+// Swagger Configuration
+const swaggerOptions = {
+  definition: {
+    openapi: '3.0.0',
+    info: {
+      title: 'School Management System API',
+      version: '1.0.0',
+      description: 'API Documentation for School Management System',
+    },
+    servers: [
+      {
+        url: `http://localhost:${PORT}`,
+      },
+    ],
+  },
+  apis: ['./src/routes/*.ts'], // Path to the API docs
+};
+
+const swaggerDocs = swaggerJsdoc(swaggerOptions);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+
+// API Routes
+app.use('/api/students', studentRoutes);
+app.use('/api/teachers', teacherRoutes);
+app.use('/api/faculties', facultyRoutes);
+app.use('/api/departments', departmentRoutes);
+app.use('/api/courses', courseRoutes);
+app.use('/api/groups', groupRoutes);
+app.use('/api/assignments', assignmentRoutes);
+app.use('/api/exams', examRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/schedule', scheduleRoutes);
+app.use('/api/submissions', submissionRoutes);
+app.use('/api/utils', utilRoutes);
+app.use('/api/library', libraryRoutes);
+app.use('/api/announcements', announcementRoutes);
+app.use('/api/financial', financialRoutes);
+app.use('/api/career', careerRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/enrollments', enrollmentRoutes);
+app.use('/api/dashboards', dashboardRoutes);
+app.use('/api/exam-submissions', examSubmissionRoutes);
+app.use('/api/gradebook', gradebookRoutes);
+app.use('/api/certificates', certificateRoutes);
+app.use('/api/hr', hrRoutes);
+app.use('/api/careers', careersRoutes);
+app.get('/api/course-analytics', getCourseAnalytics);
+
+app.get('/', (req, res) => {
+  res.send('School Management System Backend is running');
+});
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', message: 'Backend is healthy' });
+});
+
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`Swagger Docs available at http://localhost:${PORT}/api-docs`);
+});

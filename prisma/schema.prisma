@@ -1,0 +1,441 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  HR
+  TEACHER
+  STUDENT
+  STUDY_OFFICE
+}
+
+enum SubmissionStatus {
+  PENDING
+  SUBMITTED
+  GRADED
+}
+
+enum ExamSubmissionStatus {
+  PENDING
+  SUBMITTED
+  GRADED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+}
+
+model Attendance {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  date      DateTime
+  status    AttendanceStatus
+  student   User      @relation(fields: [studentId], references: [id])
+  studentId String    @db.ObjectId
+  group     Group     @relation(fields: [groupId], references: [id])
+  groupId   String    @db.ObjectId
+
+  @@unique([date, studentId, groupId], name: "attendance_unique")
+}
+
+model User {
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
+  firstName String
+  lastName  String
+  email     String @unique
+  password  String
+  role      Role   @default(STUDENT)
+
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  departmentId String?     @db.ObjectId
+
+  groups           Group[]     @relation(fields: [groupIds], references: [id])
+  groupIds         String[]    @db.ObjectId
+  ledCourses       Course[]    @relation("CourseLead")
+  headedDepartments Department[] @relation("DepartmentHead")
+  headedFaculties   Faculty[]    @relation("FacultyHead") // New: User can head multiple faculties
+
+  createdAssignments Assignment[] @relation("AssignmentsCreated")
+  submissions        Submission[] @relation("SubmissionsMade")
+
+  createdExams    Exam[]           @relation("ExamsCreated")
+  examSubmissions ExamSubmission[] @relation("ExamSubmissionsMade")
+
+  uploadedResources LibraryResource[] @relation("UploadedResources")
+
+  // ✅ Back relation for Enrollment
+  enrollments Enrollment[]
+  attendances Attendance[]
+  staffAttendances StaffAttendance[]
+
+  createdSchedules           Schedule[] @relation("SchedulesCreated")
+  schedulesAssignedToTeacher Schedule[] @relation("SchedulesAssignedToTeacher")
+
+  profile   Profile?
+  createdAnnouncements Announcement[] @relation("AnnouncementsCreated")
+  jobPostings JobPosting[] @relation("JobPostingHiringManager")
+
+  // Financial Management
+  invoices    Invoice[]
+  certificates Certificate[]
+}
+
+model StaffAttendance {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  checkInTime  DateTime
+  checkOutTime DateTime?
+  status       AttendanceStatus
+  lateMinutes  Int?
+  note         String?
+  user         User      @relation(fields: [userId], references: [id])
+  userId       String    @db.ObjectId
+
+  @@unique([checkInTime, userId], name: "staff_attendance_unique")
+}
+
+model Profile {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  bio       String?
+  avatar    String?
+  address   String?
+  phone     String?
+  dateOfBirth DateTime?
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String   @unique @db.ObjectId
+}
+
+model LibraryResource {
+  id              String  @id @default(auto()) @map("_id") @db.ObjectId
+  title           String
+  author          String
+  coverImage      String
+  uploadedBy      User    @relation("UploadedResources", fields: [uploadedById], references: [id])
+  uploadedById    String  @db.ObjectId
+  department      String?
+  description     String?
+  publicationYear Int?
+}
+
+model Department {
+  id      String   @id @default(auto()) @map("_id") @db.ObjectId
+  name    String   @unique
+  departmentCourses CourseDepartment[]
+  users   User[]
+  head    User?    @relation("DepartmentHead", fields: [headId], references: [id])
+  headId  String?  @db.ObjectId
+  faculty   Faculty? @relation(fields: [facultyId], references: [id])
+  facultyId String?  @db.ObjectId
+}
+
+model Faculty {
+  id           String       @id @default(auto()) @map("_id") @db.ObjectId
+  name         String       @unique
+  departments  Department[]
+  head         User?        @relation("FacultyHead", fields: [headId], references: [id]) // New: Faculty can have a head
+  headId       String?      @db.ObjectId
+}
+
+model Course {
+  id           String       @id @default(auto()) @map("_id") @db.ObjectId
+  name         String       @unique
+  groups       Group[]      @relation("CourseToGroup", fields: [groupIds], references: [id])
+  groupIds     String[]     @db.ObjectId
+  leadBy       User?        @relation("CourseLead", fields: [leadById], references: [id])
+  leadById     String?      @db.ObjectId
+
+  // ✅ Back relation for Enrollment
+  enrollments Enrollment[]
+  courseDepartments CourseDepartment[]
+  announcements Announcement[]
+  certificates Certificate[] // New: Relation to Certificate model
+}
+
+model Certificate {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  recipient   String
+  course      Course    @relation(fields: [courseId], references: [id])
+  courseId    String    @db.ObjectId
+  issueDate   DateTime
+  expiryDate  DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  template    Template? @relation(fields: [templateId], references: [id])
+  templateId  String?   @db.ObjectId
+
+  student     User?     @relation(fields: [studentId], references: [id])
+  studentId   String?   @db.ObjectId
+}
+
+model Template {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String   @unique
+  content   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  certificates Certificate[]
+}
+
+model Announcement {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  course    Course   @relation(fields: [courseId], references: [id])
+  courseId  String   @db.ObjectId
+
+  author    User     @relation("AnnouncementsCreated", fields: [authorId], references: [id])
+  authorId  String   @db.ObjectId
+}
+
+model Group {
+  id   String @id @default(auto()) @map("_id") @db.ObjectId
+  name String @unique
+
+  courses    Course[] @relation("CourseToGroup", fields: [courseIds], references: [id])
+  courseIds  String[] @db.ObjectId
+  students   User[]   @relation(fields: [studentIds], references: [id])
+  studentIds String[] @db.ObjectId
+
+  assignments Assignment[]
+  exams       Exam[]
+  attendances Attendance[]
+  schedules   Schedule[] @relation("SchedulesAssignedToGroup")
+}
+
+model Assignment {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  description String?
+  dueDate     DateTime?
+  points      Int?
+
+  teacher     User         @relation("AssignmentsCreated", fields: [teacherId], references: [id])
+  teacherId   String       @db.ObjectId
+  group       Group        @relation(fields: [groupId], references: [id])
+  groupId     String       @db.ObjectId
+  submissions Submission[]
+}
+
+model Submission {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  content     String?
+  submittedAt DateTime?
+  grade       Int?
+  feedback    String?
+
+  status SubmissionStatus @default(PENDING)
+
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  assignmentId String     @db.ObjectId
+  student      User       @relation("SubmissionsMade", fields: [studentId], references: [id])
+  studentId    String     @db.ObjectId
+
+  @@unique([assignmentId, studentId])
+}
+
+model Exam {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  description String?
+  examDate    DateTime?
+
+  teacher     User             @relation("ExamsCreated", fields: [teacherId], references: [id])
+  teacherId   String           @db.ObjectId
+  group       Group            @relation(fields: [groupId], references: [id])
+  groupId     String           @db.ObjectId
+  submissions ExamSubmission[]
+}
+
+model ExamSubmission {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  content     String?
+  submittedAt DateTime?
+  grade       Int?
+  feedback    String?
+
+  status ExamSubmissionStatus @default(PENDING)
+
+  exam      Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
+  examId    String @db.ObjectId
+  student   User   @relation("ExamSubmissionsMade", fields: [studentId], references: [id])
+  studentId String @db.ObjectId
+
+  @@unique([examId, studentId])
+}
+
+model Enrollment {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  student   User   @relation(fields: [studentId], references: [id])
+  studentId String @db.ObjectId
+
+  course   Course @relation(fields: [courseId], references: [id])
+  courseId String @db.ObjectId
+
+  progress Int @default(0) // 0–100 percentage
+
+  @@unique([studentId, courseId])
+}
+
+model Session {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  startTime   DateTime
+  endTime     DateTime
+  schedule    Schedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  scheduleId  String    @db.ObjectId
+}
+
+model Schedule {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+
+  isRecurring Boolean   @default(false)
+  startDate   DateTime? 
+  endDate     DateTime? 
+  daysOfWeek  String[] 
+
+  creator     User      @relation("SchedulesCreated", fields: [creatorId], references: [id])
+  creatorId   String    @db.ObjectId
+
+  assignedToTeacher   User?   @relation("SchedulesAssignedToTeacher", fields: [assignedToTeacherId], references: [id])
+  assignedToTeacherId String? @db.ObjectId
+
+  assignedToGroup   Group?   @relation("SchedulesAssignedToGroup", fields: [assignedToGroupId], references: [id])
+  assignedToGroupId String? @db.ObjectId
+
+  sessions    Session[]
+}
+
+model CourseDepartment {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  courseId     String   @db.ObjectId
+  departmentId String   @db.ObjectId
+
+  course       Course   @relation(fields: [courseId], references: [id])
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, departmentId])
+}
+
+
+enum JobPostingStatus {
+  OPEN
+  CLOSED
+  FILLED
+}
+
+model JobPosting {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  description String
+  requirements String[]
+  responsibilities String[]
+  location    String
+  department  String?
+  salaryRange String?
+  employmentType String
+  applicationDeadline DateTime
+  postedDate  DateTime  @default(now())
+  status      JobPostingStatus @default(OPEN)
+  hiringManagerId String? @db.ObjectId
+  hiringManager User? @relation("JobPostingHiringManager", fields: [hiringManagerId], references: [id])
+  applications JobApplication[]
+}
+
+model JobApplication {
+  id              String       @id @default(auto()) @map("_id") @db.ObjectId
+  applicantName   String
+  applicantEmail  String
+  resume          String // URL to the uploaded resume
+  coverLetter     String? // URL to the uploaded cover letter
+  appliedAt       DateTime     @default(now())
+  jobPosting      JobPosting   @relation(fields: [jobPostingId], references: [id])
+  jobPostingId    String       @db.ObjectId
+}
+
+// Financial Management
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  CREDIT_CARD
+  BANK_TRANSFER
+  OTHER
+}
+
+model Fee {
+  id          String       @id @default(auto()) @map("_id") @db.ObjectId
+  name        String       @unique
+  description String?
+  amount      Float
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  invoiceItems InvoiceItem[]
+}
+
+model Invoice {
+  id          String        @id @default(auto()) @map("_id") @db.ObjectId
+  student     User          @relation(fields: [studentId], references: [id])
+  studentId   String        @db.ObjectId
+  status      InvoiceStatus @default(DRAFT)
+  issueDate   DateTime
+  dueDate     DateTime
+  totalAmount Float
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  items     InvoiceItem[]
+  payments  Payment[]
+}
+
+model InvoiceItem {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+  invoiceId   String   @db.ObjectId
+  fee         Fee      @relation(fields: [feeId], references: [id])
+  feeId       String   @db.ObjectId
+  description String
+  amount      Float
+}
+
+model Payment {
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
+  invoice       Invoice       @relation(fields: [invoiceId], references: [id])
+  invoiceId     String        @db.ObjectId
+  amount        Float
+  paymentDate   DateTime
+  paymentMethod PaymentMethod
+  transactionId String?
+  notes         String?
+  createdAt     DateTime      @default(now())
+}
+
+model Expense {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  category    String
+  description String?
+  amount      Float
+  date        DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

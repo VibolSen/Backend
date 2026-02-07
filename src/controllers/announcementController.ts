@@ -3,7 +3,10 @@ import prisma from '../prisma';
 
 export const getAnnouncements = async (req: Request, res: Response) => {
   try {
+    const { courseId } = req.query;
+    
     const announcements = await prisma.announcement.findMany({
+        where: courseId ? { courseId: String(courseId) } : {},
         include: {
             author: {
                 select: { firstName: true, lastName: true }

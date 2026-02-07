@@ -426,6 +426,8 @@ model Payment {
   paymentDate   DateTime
   paymentMethod PaymentMethod
   transactionId String?
+  senderAccount String?   // New: To record Bakong ID / Bank Account
+  senderName    String?   // New: To record the person who paid
   notes         String?
   createdAt     DateTime      @default(now())
 }

@@ -93,6 +93,25 @@ export const getMe = async (req: AuthRequest, res: Response) => {
         groupIds: true,
         profile: true,
         department: true,
+        groups: {
+          select: {
+            id: true,
+            name: true,
+            courses: {
+              select: {
+                id: true,
+                name: true
+              }
+            },
+            students: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        },
         headedFaculties: {
           select: {
             id: true,

@@ -31,6 +31,43 @@ export const getCourses = async (req: Request, res: Response) => {
   }
 };
 
+export const getCourseById = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const course = await prisma.course.findUnique({
+      where: { id },
+      include: {
+        leadBy: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          }
+        },
+        courseDepartments: {
+          include: { department: true }
+        },
+        _count: {
+          select: {
+            enrollments: true,
+            announcements: true
+          }
+        }
+      },
+    });
+
+    if (!course) {
+      return res.status(404).json({ error: "Course not found" });
+    }
+
+    res.json(course);
+  } catch (err) {
+    console.error("Failed to fetch course detail:", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
 export const createCourse = async (req: Request, res: Response) => {
   try {
     const { name, leadById, departmentIds } = req.body; // Expecting departmentIds generic array

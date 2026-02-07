@@ -23,12 +23,15 @@ import careerRoutes from './routes/careerRoutes';
 import authRoutes from './routes/authRoutes';
 import userRoutes from './routes/userRoutes';
 import enrollmentRoutes from './routes/enrollmentRoutes';
+import { authenticateToken } from './middleware/auth';
+import { getMe } from './controllers/authController';
 import dashboardRoutes from './routes/dashboardRoutes';
 import examSubmissionRoutes from './routes/examSubmissionRoutes';
 import gradebookRoutes from './routes/gradebookRoutes';
 import certificateRoutes from './routes/certificateRoutes';
 import hrRoutes from './routes/hrRoutes';
 import careersRoutes from './routes/careersRoutes';
+import prisma from './prisma';
 
 dotenv.config();
 
@@ -93,8 +96,31 @@ app.use('/api/users', userRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/dashboards', dashboardRoutes);
 
-// Legacy/Short Alias for /api/auth/me
-app.use('/api/me', authRoutes);
+// Direct routes for /api/me (avoids double-namespace issue)
+app.get('/api/me', authenticateToken, getMe);
+app.get('/api/me/schedules', authenticateToken, async (req: any, res: any) => {
+  try {
+    const userId = req.user.userId;
+    const schedules = await prisma.schedule.findMany({
+      where: {
+        OR: [
+          { assignedToTeacherId: userId },
+          { assignedToGroup: { students: { some: { id: userId } } } }
+        ]
+      },
+      include: {
+        assignedToGroup: { select: { name: true } },
+        assignedToTeacher: { select: { firstName: true, lastName: true } },
+        sessions: true
+      },
+      orderBy: { startDate: 'asc' }
+    });
+    res.json(schedules);
+  } catch (err) {
+    console.error('Failed to fetch user schedules:', err);
+    res.status(500).json({ error: 'Failed to fetch schedules' });
+  }
+});
 app.use('/api/exam-submissions', examSubmissionRoutes);
 app.use('/api/gradebook', gradebookRoutes);
 app.use('/api/certificates', certificateRoutes);

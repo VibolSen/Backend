@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getTeachers, createTeacher, getTeacherById, updateTeacher, deleteTeacher } from '../controllers/teacherController';
+import { getTeachers, createTeacher, getTeacherById, updateTeacher, deleteTeacher, getTeacherCourses } from '../controllers/teacherController';
 
 const router = Router();
 
@@ -20,6 +20,7 @@ const router = Router();
  *       200:
  *         description: List of teachers
  */
+router.get('/my-courses', getTeacherCourses);
 router.get('/', getTeachers);
 
 /**

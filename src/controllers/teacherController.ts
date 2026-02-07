@@ -26,6 +26,49 @@ export const getTeachers = async (req: Request, res: Response) => {
   }
 };
 
+export const getTeacherCourses = async (req: Request, res: Response) => {
+  try {
+    const { teacherId } = req.query;
+
+    if (!teacherId) {
+      return res.status(400).json({ error: 'Teacher ID is required' });
+    }
+
+    const courses = await prisma.course.findMany({
+      where: {
+        leadById: String(teacherId),
+      },
+      include: {
+        courseDepartments: {
+          include: {
+            department: true
+          }
+        },
+        _count: {
+          select: {
+            groups: true,
+            enrollments: true
+          }
+        }
+      },
+      orderBy: { name: 'asc' }
+    });
+
+    // Map the response to match the frontend expectations
+    const formattedCourses = courses.map(course => ({
+      ...course,
+      department: course.courseDepartments[0]?.department,
+      groupCount: course._count.groups,
+      studentCount: course._count.enrollments
+    }));
+
+    res.json(formattedCourses);
+  } catch (error) {
+    console.error("Error fetching teacher courses:", error);
+    res.status(500).json({ error: "Failed to fetch teacher courses" });
+  }
+};
+
 export const createTeacher = async (req: Request, res: Response) => {
   try {
     const { firstName, lastName, email, password } = req.body;

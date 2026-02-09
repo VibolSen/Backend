@@ -81,24 +81,44 @@ export const getStudentStats = async (req: Request, res: Response) => {
     const { studentId } = req.query;
     if (!studentId) return res.status(400).json({ error: "studentId is required" });
 
-    const [enrollments, attendanceRate, pendingInvoices] = await Promise.all([
+    const [enrollments, attendanceAggregate, pendingInvoices, pendingAssignmentsCount, pendingExamsCount] = await Promise.all([
       prisma.enrollment.count({ where: { studentId: studentId as string } }),
       prisma.attendance.aggregate({
           where: { studentId: studentId as string },
           _count: { id: true },
-          // Simplified: total count of recorded attendances
       }),
       prisma.invoice.findMany({
           where: { studentId: studentId as string, status: 'SENT' }
+      }),
+      prisma.assignment.count({
+          where: { 
+            group: { students: { some: { id: studentId as string } } },
+            submissions: { none: { studentId: studentId as string } }
+          }
+      }),
+      prisma.exam.count({
+          where: {
+            group: { students: { some: { id: studentId as string } } },
+            submissions: { none: { studentId: studentId as string } }
+          }
       })
     ]);
 
     const totalInvoiced = pendingInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
 
+    const attendances = await prisma.attendance.findMany({
+      where: { studentId: studentId as string }
+    });
+    const totalAttendance = attendances.length;
+    const presentCount = attendances.filter(a => a.status === 'PRESENT').length;
+    const attendanceRate = totalAttendance > 0 ? Math.round((presentCount / totalAttendance) * 100) : 0;
+
     res.json({
       enrollments,
-      attendanceCount: attendanceRate._count.id,
+      attendanceRate,
       pendingInvoicesCount: pendingInvoices.length,
+      pendingAssignmentsCount,
+      pendingExamsCount,
       totalInvoiced,
       gpa: 3.8, // Placeholder
       performanceData: [] // Placeholder

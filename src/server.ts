@@ -40,7 +40,7 @@ const PORT = process.env.PORT || 5000;
 
 // CORS Configuration - Allow Frontend to access Backend
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: (origin, callback) => callback(null, true), // Allow all origins (including mobile apps/tunnels)
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -150,7 +150,7 @@ app.use((err: any, req: any, res: any, next: any) => {
   res.status(500).json({ error: "Internal Server Error", message: err.message });
 });
 
-app.listen(PORT, () => {
+app.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`Server is running on http://localhost:${PORT}`);
   console.log(`Swagger Docs available at http://localhost:${PORT}/api-docs`);
 });

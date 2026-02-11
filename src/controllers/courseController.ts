@@ -18,7 +18,8 @@ export const getCourses = async (req: Request, res: Response) => {
         },
         _count: {
             select: {
-                enrollments: true
+                enrollments: true,
+                groups: true
             }
         }
       },
@@ -51,7 +52,8 @@ export const getCourseById = async (req: Request, res: Response) => {
         _count: {
           select: {
             enrollments: true,
-            announcements: true
+            announcements: true,
+            groups: true
           }
         }
       },

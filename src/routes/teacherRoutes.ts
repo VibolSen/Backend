@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getTeachers, createTeacher, getTeacherById, updateTeacher, deleteTeacher, getTeacherCourses } from '../controllers/teacherController';
+import { getTeachers, createTeacher, getTeacherById, updateTeacher, deleteTeacher, getTeacherCourses, getMyStudents, getMyGroups, getGroupStudents, getGroupAttendance, submitGroupAttendance } from '../controllers/teacherController';
 
 const router = Router();
 
@@ -21,6 +21,11 @@ const router = Router();
  *         description: List of teachers
  */
 router.get('/my-courses', getTeacherCourses);
+router.get('/my-students', getMyStudents);
+router.get('/my-groups', getMyGroups);
+router.get('/groups/:groupId/students', getGroupStudents);
+router.get('/groups/:groupId/attendance', getGroupAttendance);
+router.post('/groups/:groupId/attendance', submitGroupAttendance);
 router.get('/', getTeachers);
 
 /**

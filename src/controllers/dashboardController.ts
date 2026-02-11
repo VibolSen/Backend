@@ -138,6 +138,15 @@ export const getHRStats = async (req: Request, res: Response) => {
       prisma.group.findMany({ select: { name: true, students: { select: { id: true } } } })
     ]);
 
+    const departmentsWithCourseCount = await prisma.department.findMany({
+      select: {
+        name: true,
+        _count: {
+          select: { departmentCourses: true }
+        }
+      }
+    });
+
     res.json({
       totalStaff,
       totalTeachers,
@@ -146,7 +155,10 @@ export const getHRStats = async (req: Request, res: Response) => {
         { name: 'Active', value: totalStaff },
         { name: 'On Leave', value: 0 }
       ],
-      coursesByDepartment: [],
+      coursesByDepartment: departmentsWithCourseCount.map(d => ({
+        name: d.name,
+        count: d._count.departmentCourses
+      })),
       studentsPerGroup: studentsPerGroup.map(g => ({ name: g.name, count: g.students.length }))
     });
   } catch (error) {

@@ -13,6 +13,11 @@ export const getDepartments = async (req: Request, res: Response) => {
                 lastName: true,
                 email: true,
             }
+        },
+        _count: {
+          select: {
+            departmentCourses: true
+          }
         }
       },
       orderBy: { name: 'asc' },

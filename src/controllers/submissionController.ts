@@ -4,20 +4,44 @@ import prisma from '../prisma';
 export const getSubmission = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    
+    // 1. Try to find a real submission
     const submission = await prisma.submission.findUnique({
       where: { id },
       include: {
-        assignment: true, // Course not directly related in schema
+        assignment: true,
         student: {
             select: { firstName: true, lastName: true, email: true }
         }
       }
     });
-    if (!submission) {
-        res.status(404).json({ error: "Submission not found" });
-        return;
+
+    if (submission) {
+        return res.json(submission);
     }
-    res.json(submission);
+
+    // 2. If no submission, check if the ID is an Assignment ID (Virtual Submission)
+    const assignment = await prisma.assignment.findUnique({
+        where: { id },
+        include: {
+            group: { select: { name: true } }
+        }
+    });
+
+    if (assignment) {
+        // Return a mocked "PENDING" submission
+        return res.json({
+            id: assignment.id,
+            status: 'PENDING',
+            assignment: assignment,
+            grade: null,
+            feedback: null,
+            submittedAt: null,
+            student: null // We don't have the student context here easily, but the view should handle it
+        });
+    }
+
+    res.status(404).json({ error: "Submission or Assignment not found" });
   } catch (err) {
     console.error("Failed to fetch submission:", err);
     res.status(500).json({ error: "Failed to fetch submission" });

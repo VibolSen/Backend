@@ -3,7 +3,15 @@ import prisma from '../prisma';
 
 export const getAssignments = async (req: Request, res: Response) => {
   try {
+    const { teacherId } = req.query;
+
+    const whereClause: any = {};
+    if (teacherId) {
+      whereClause.teacherId = String(teacherId);
+    }
+
     const assignments = await prisma.assignment.findMany({
+      where: whereClause,
       include: {
         group: { select: { name: true } },
         teacher: { select: { firstName: true, lastName: true } },

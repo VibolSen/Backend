@@ -22,18 +22,18 @@ export const getStudentCourses = async (req: Request, res: Response) => {
       }
     });
 
-    // 2. Get courses through group membership
-    const studentWithGroups = await prisma.user.findUnique({
-      where: { id: String(studentId) },
+    // 2. Get courses through group membership (using relation lookup for reliability)
+    const groups = await prisma.group.findMany({
+      where: {
+        students: {
+          some: { id: String(studentId) }
+        }
+      },
       include: {
-        groups: {
+        courses: {
           include: {
-            courses: {
-              include: {
-                leadBy: { select: { firstName: true, lastName: true } },
-                courseDepartments: { include: { department: { select: { name: true } } } }
-              }
-            }
+            leadBy: { select: { firstName: true, lastName: true } },
+            courseDepartments: { include: { department: { select: { name: true } } } }
           }
         }
       }
@@ -52,7 +52,7 @@ export const getStudentCourses = async (req: Request, res: Response) => {
     });
 
     // Add courses from groups
-    studentWithGroups?.groups.forEach(group => {
+    groups.forEach(group => {
       group.courses.forEach(course => {
         if (!courseMap.has(course.id)) {
           courseMap.set(course.id, {
@@ -82,27 +82,39 @@ export const getStudentAssignments = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Student ID is required' });
     }
 
-    const submissions = await prisma.submission.findMany({
+    // Fetch all assignments for groups the student is in
+    const assignments = await prisma.assignment.findMany({
       where: {
-        studentId: String(studentId),
+        group: {
+          students: {
+            some: { id: String(studentId) }
+          }
+        }
       },
       include: {
-        assignment: { // Include assignment details
-          include: {
-            group: { // Include the group to get to the course
-              include: {
-                courses: true, // Include courses within the group
-              },
-            },
-          },
-        },
+        group: { select: { name: true } },
+        submissions: {
+          where: { studentId: String(studentId) }
+        }
       },
       orderBy: {
-        submittedAt: 'desc', // Order by most recent submission
-      },
+        dueDate: 'asc'
+      }
     });
 
-    res.json(submissions);
+    // Map to the format expected by the frontend (Submission-centric)
+    const results = assignments.map(a => {
+        const submission = a.submissions[0];
+        return {
+            id: submission?.id || a.id, // Use submission ID if available, otherwise assignment ID
+            status: submission?.status || 'PENDING',
+            grade: submission?.grade || null,
+            submittedAt: submission?.submittedAt || null,
+            assignment: a
+        };
+    });
+
+    res.json(results);
   } catch (error) {
     console.error("Error fetching student assignments:", error);
     res.status(500).json({ error: "Failed to fetch student assignments" });
@@ -144,23 +156,39 @@ export const getStudentExams = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Student ID is required' });
     }
 
-    const examSubmissions = await prisma.examSubmission.findMany({
+    // Fetch all exams for groups the student is in
+    const exams = await prisma.exam.findMany({
       where: {
-        studentId: String(studentId),
-      },
-      include: {
-        exam: {
-          include: {
-            group: true,
+        group: {
+          students: {
+            some: { id: String(studentId) }
           }
         }
       },
-      orderBy: {
-        submittedAt: 'desc',
+      include: {
+        group: { select: { name: true } },
+        submissions: {
+          where: { studentId: String(studentId) }
+        }
       },
+      orderBy: {
+        examDate: 'asc' // Show upcoming first
+      }
     });
 
-    res.json(examSubmissions);
+    // Map to the format expected by the frontend (Submission-centric)
+    const results = exams.map(e => {
+        const submission = e.submissions[0];
+        return {
+            id: submission?.id || e.id,
+            status: submission?.status || 'PENDING',
+            grade: submission?.grade || null,
+            submittedAt: submission?.submittedAt || null,
+            exam: e
+        };
+    });
+
+    res.json(results);
   } catch (error) {
     console.error("Error fetching student exams:", error);
     res.status(500).json({ error: "Failed to fetch student exams" });

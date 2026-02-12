@@ -20,6 +20,17 @@ export const login = async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    // Check if account is active
+    if (user.isActive === false) {
+      return res.status(403).json({ error: "Your account has been deactivated. Please contact administration." });
+    }
+
+    // Update last login
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLogin: new Date() }
+    });
+
     const tokenPayload = {
       userId: user.id,
       role: user.role,
@@ -36,6 +47,7 @@ export const login = async (req: Request, res: Response) => {
 };
 
 export const register = async (req: Request, res: Response) => {
+
   try {
     const { email, password, firstName, lastName, role } = req.body;
 
@@ -89,6 +101,8 @@ export const getMe = async (req: AuthRequest, res: Response) => {
         lastName: true,
         email: true,
         role: true,
+        isActive: true,
+        lastLogin: true,
         departmentId: true,
         groupIds: true,
         profile: true,

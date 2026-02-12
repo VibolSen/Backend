@@ -1,5 +1,9 @@
 import { Router } from 'express';
-import { getUsers, getProfile, updateProfile, updateUser, deleteUser, createUser } from '../controllers/userController';
+import { 
+  getUsers, getUser, getProfile, updateProfile, updateUser, deleteUser, createUser,
+  adminResetPassword, toggleUserStatus, bulkCreateUsers, getAuditLogs
+} from '../controllers/userController';
+import { authenticateToken, authorizeRoles } from '../middleware/auth';
 
 const router = Router();
 
@@ -21,9 +25,16 @@ const router = Router();
  *         description: List of users
  */
 router.get('/', getUsers);
+router.get('/:id', getUser);
 router.post('/', createUser);
 router.put('/', updateUser);
 router.delete('/', deleteUser);
+
+// ✅ Account Management Routes
+router.patch('/toggle-status/:id', toggleUserStatus);
+router.post('/reset-password/:id', adminResetPassword);
+router.post('/bulk-create', authenticateToken, authorizeRoles('ADMIN', 'HR'), bulkCreateUsers);
+router.get('/audit-logs', authenticateToken, authorizeRoles('ADMIN'), getAuditLogs);
 
 /**
  * @swagger

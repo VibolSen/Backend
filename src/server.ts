@@ -26,6 +26,7 @@ import enrollmentRoutes from './routes/enrollmentRoutes';
 import { authenticateToken } from './middleware/auth';
 import { getMe } from './controllers/authController';
 import dashboardRoutes from './routes/dashboardRoutes';
+import profileRoutes from './routes/profileRoutes'; // Added this
 import examSubmissionRoutes from './routes/examSubmissionRoutes';
 import gradebookRoutes from './routes/gradebookRoutes';
 import certificateRoutes from './routes/certificateRoutes';
@@ -94,7 +95,9 @@ app.use('/api/career', careerRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
+app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/dashboards', dashboardRoutes);
+app.use('/api/profile', profileRoutes);
 
 // Direct routes for /api/me (avoids double-namespace issue)
 app.get('/api/me', authenticateToken, getMe);

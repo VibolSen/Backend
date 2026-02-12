@@ -56,4 +56,20 @@ router.get('/roles', (req: Request, res: Response) => {
     res.json(['ADMIN', 'HR', 'TEACHER', 'STUDENT', 'STUDY_OFFICE']);
 });
 
+import { upload } from '../middleware/upload';
+
+// File Upload Route
+router.post('/upload', upload.single('file'), (req: any, res: any) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    // Return the Cloudinary URL
+    res.json({ url: req.file.path, public_id: req.file.filename });
+  } catch (err) {
+    console.error("Upload error:", err);
+    res.status(500).json({ error: 'Upload failed' });
+  }
+});
+
 export default router;

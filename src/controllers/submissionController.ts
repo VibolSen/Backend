@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma';
+import { uploadToCloudinary, deleteFromCloudinary, getPublicIdFromUrl } from '../middleware/upload';
+import { createInternalNotification } from './notificationController';
 
 export const getSubmission = async (req: Request, res: Response) => {
   try {
@@ -7,7 +9,7 @@ export const getSubmission = async (req: Request, res: Response) => {
     
     // 1. Try to find a real submission
     const submission = await prisma.submission.findUnique({
-      where: { id },
+      where: { id: String(id) },
       include: {
         assignment: true,
         student: {
@@ -22,7 +24,7 @@ export const getSubmission = async (req: Request, res: Response) => {
 
     // 2. If no submission, check if the ID is an Assignment ID (Virtual Submission)
     const assignment = await prisma.assignment.findUnique({
-        where: { id },
+        where: { id: String(id) },
         include: {
             group: { select: { name: true } }
         }
@@ -37,7 +39,7 @@ export const getSubmission = async (req: Request, res: Response) => {
             grade: null,
             feedback: null,
             submittedAt: null,
-            student: null // We don't have the student context here easily, but the view should handle it
+            student: null 
         });
     }
 
@@ -51,21 +53,71 @@ export const getSubmission = async (req: Request, res: Response) => {
 export const updateSubmission = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { grade, feedback, status } = req.body;
+    const { grade, feedback, status, content } = req.body;
+    let { fileUrls } = req.body;
 
-    // Mapping frontend statusId to Enum if necessary, or assuming string matches.
-    // The Schema has Check SubmissionStatus enum: PENDING, SUBMITTED, GRADED.
-    // Frontend likely sends ID or String. The generic 'statusId' suggests a lookup.
-    // For now, we update grade/feedback.
+    // Handle File Uploads (for resubmissions)
+    const files = req.files as Express.Multer.File[];
+    const uploadedUrls: string[] = [];
+    if (files && files.length > 0) {
+      const uploadPromises = files.map(file => uploadToCloudinary(file.buffer, 'submissions'));
+      const results = await Promise.all(uploadPromises);
+      uploadedUrls.push(...results.map(r => r.secure_url));
+    }
+
+    // Handle existing URLs
+    let finalUrls: string[] = [];
+    if (Array.isArray(fileUrls)) {
+        finalUrls = fileUrls;
+    } else if (typeof fileUrls === 'string' && fileUrls.trim().length > 0) {
+        finalUrls = fileUrls.split(',').map(u => u.trim());
+    }
+    
+    finalUrls = [...finalUrls, ...uploadedUrls];
+
+    // Fetch original to cleanup removed files
+    const original = await prisma.submission.findUnique({
+        where: { id: String(id) },
+        select: { fileUrls: true }
+    });
 
     const updated = await prisma.submission.update({
-      where: { id },
+      where: { id: String(id) },
       data: {
-        grade: grade ? parseInt(grade) : undefined,
+        grade: grade !== undefined ? parseInt(grade) : undefined,
         feedback,
-        status: status // Ensure frontend sends correct Enum string 'GRADED' etc.
+        status: status,
+        content: content,
+        fileUrls: finalUrls,
+        submittedAt: status === 'SUBMITTED' ? new Date() : undefined
       }
     });
+
+    // Notify student if graded
+    if (status === 'GRADED') {
+        const assignment = await prisma.assignment.findUnique({
+            where: { id: updated.assignmentId },
+            select: { title: true }
+        });
+        
+        await createInternalNotification(
+            updated.studentId,
+            "Assignment Graded",
+            `Your submission for "${assignment?.title}" has been graded.`,
+            "GRADE",
+            `/student/assignments/${updated.id}`
+        );
+    }
+
+    // Cleanup removed assets
+    if (original?.fileUrls) {
+        const removedUrls = original.fileUrls.filter(url => !finalUrls.includes(url));
+        for (const url of removedUrls) {
+            const publicId = getPublicIdFromUrl(url);
+            if (publicId) await deleteFromCloudinary(publicId);
+        }
+    }
+
     res.json(updated);
   } catch (err) {
     console.error("Failed to update submission:", err);
@@ -74,18 +126,35 @@ export const updateSubmission = async (req: Request, res: Response) => {
 };
 
 export const createSubmission = async (req: Request, res: Response) => {
-    // For students submitting work
     try {
-        const { assignmentId, studentId, content, fileUrl } = req.body;
+        const { assignmentId, studentId, content } = req.body;
+        let { fileUrls } = req.body;
+
+        // Handle File Uploads
+        const files = req.files as Express.Multer.File[];
+        const uploadedUrls: string[] = [];
+        if (files && files.length > 0) {
+          const uploadPromises = files.map(file => uploadToCloudinary(file.buffer, 'submissions'));
+          const results = await Promise.all(uploadPromises);
+          uploadedUrls.push(...results.map(r => r.secure_url));
+        }
+
+        // Handle existing URLs
+        let finalUrls: string[] = [];
+        if (Array.isArray(fileUrls)) {
+            finalUrls = fileUrls;
+        } else if (typeof fileUrls === 'string' && fileUrls.trim().length > 0) {
+            finalUrls = fileUrls.split(',').map(u => u.trim());
+        }
+        
+        finalUrls = [...finalUrls, ...uploadedUrls];
+
         const submission = await prisma.submission.create({
             data: {
                 assignmentId,
                 studentId,
                 content,
-                // fileUrl is not in schema I saw? Let's check schema.
-                // Schema has `content` string. `resume` string in JobApplication.
-                // Assignment Submission schema: `content`, `submittedAt`, `grade`, `feedback`, `status`.
-                // No `fileUrl`. Maybe `content` stores the URL?
+                fileUrls: finalUrls,
                 submittedAt: new Date(),
                 status: 'SUBMITTED'
             }

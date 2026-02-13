@@ -136,7 +136,7 @@ export const getTeacherById = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const teacher = await prisma.user.findUnique({
-          where: { id, role: 'TEACHER' },
+          where: { id: String(id), role: 'TEACHER' },
           select: {
             id: true,
             firstName: true,
@@ -165,7 +165,7 @@ export const updateTeacher = async (req: Request, res: Response) => {
     const { firstName, lastName, email } = req.body;
 
     const updatedTeacher = await prisma.user.update({
-      where: { id, role: 'TEACHER' },
+      where: { id: String(id), role: 'TEACHER' },
       data: {
         firstName,
         lastName,
@@ -192,7 +192,7 @@ export const deleteTeacher = async (req: Request, res: Response) => {
     const { id } = req.params;
 
     await prisma.user.delete({
-      where: { id, role: 'TEACHER' },
+      where: { id: String(id), role: 'TEACHER' },
     });
 
     res.json({ message: "Teacher deleted successfully" });
@@ -322,7 +322,7 @@ export const getGroupStudents = async (req: Request, res: Response) => {
     const { groupId } = req.params;
 
     const group = await prisma.group.findUnique({
-      where: { id: groupId },
+      where: { id: String(groupId) },
       include: {
         students: {
           select: {
@@ -363,7 +363,7 @@ export const getGroupAttendance = async (req: Request, res: Response) => {
 
     const attendance = await prisma.attendance.findMany({
       where: {
-        groupId,
+        groupId: String(groupId),
         date: {
           gte: startOfDay,
           lte: endOfDay,
@@ -401,7 +401,7 @@ export const submitGroupAttendance = async (req: Request, res: Response) => {
     // Delete existing attendance for this group and date
     await prisma.attendance.deleteMany({
       where: {
-        groupId,
+        groupId: String(groupId),
         date: {
           gte: new Date(attendanceDate.setHours(0, 0, 0, 0)),
           lte: new Date(attendanceDate.setHours(23, 59, 59, 999)),
@@ -413,7 +413,7 @@ export const submitGroupAttendance = async (req: Request, res: Response) => {
     const records = await prisma.attendance.createMany({
       data: attendances.map((att: any) => ({
         studentId: att.studentId,
-        groupId,
+        groupId: String(groupId),
         date: new Date(date),
         status: att.status,
       })),

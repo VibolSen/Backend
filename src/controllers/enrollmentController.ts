@@ -20,8 +20,8 @@ async function calculateCourseProgress(studentId: string, courseId: string) {
   const exams = course.groups.flatMap((g) => g.exams);
 
   const totalPossiblePoints = 
-    assignments.reduce((sum, a) => sum + (a.points || 100), 0) + 
-    exams.length * 100;
+    assignments.reduce((sum, a: any) => sum + (a.maxPoints || a.points || 100), 0) + 
+    exams.reduce((sum, e: any) => sum + (e.maxScore || 100), 0);
 
   if (totalPossiblePoints === 0) return 0;
 

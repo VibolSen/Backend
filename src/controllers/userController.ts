@@ -10,7 +10,7 @@ export const getUser = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const user = await prisma.user.findUnique({
-      where: { id },
+      where: { id: String(id) },
       include: {
         profile: true,
         department: true,
@@ -107,7 +107,7 @@ export const getProfile = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const profile = await prisma.profile.findUnique({
-      where: { userId: id },
+      where: { userId: String(id) },
       include: { user: true }
     });
     if (!profile) {
@@ -130,7 +130,7 @@ export const updateProfile = async (req: Request, res: Response) => {
     } = req.body;
     
     const profile = await prisma.profile.upsert({
-      where: { userId: id },
+      where: { userId: String(id) },
       update: {
         bio,
         avatar,
@@ -176,7 +176,7 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
     if (!id) return res.status(400).json({ error: "User ID is required" });
 
     const currentUserData = await prisma.user.findUnique({
-      where: { id },
+      where: { id: String(id) },
       include: { profile: true }
     });
 
@@ -190,7 +190,7 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
     }
 
     const updatedUser = await prisma.user.update({
-      where: { id },
+      where: { id: String(id) },
       data: {
         email,
         firstName,
@@ -215,12 +215,12 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
     });
 
     if (req.user && role !== currentUserData.role) {
-      await logAudit(req.user.userId, "ROLE_MIGRATION", "USER", id, { 
+      await logAudit(req.user.userId, "ROLE_MIGRATION", "USER", String(id), { 
         from: currentUserData.role, 
         to: role 
       });
     } else if (req.user) {
-      await logAudit(req.user.userId, "USER_UPDATED", "USER", id, { email, role, isActive });
+      await logAudit(req.user.userId, "USER_UPDATED", "USER", String(id), { email, role, isActive });
     }
 
     res.json(updatedUser);
@@ -240,12 +240,12 @@ export const adminResetPassword = async (req: AuthRequest, res: Response) => {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     await prisma.user.update({
-      where: { id },
+      where: { id: String(id) },
       data: { password: hashedPassword },
     });
 
     if (req.user) {
-      await logAudit(req.user.userId, "PASSWORD_RESET", "USER", id);
+      await logAudit(req.user.userId, "PASSWORD_RESET", "USER", String(id));
     }
 
     res.json({ success: true, message: "Password reset successfully" });
@@ -261,12 +261,12 @@ export const toggleUserStatus = async (req: AuthRequest, res: Response) => {
     const { isActive } = req.body;
 
     const updatedUser = await prisma.user.update({
-      where: { id },
+      where: { id: String(id) },
       data: { isActive },
     });
 
     if (req.user) {
-      await logAudit(req.user.userId, isActive ? "ACCOUNT_ACTIVATED" : "ACCOUNT_SUSPENDED", "USER", id);
+      await logAudit(req.user.userId, isActive ? "ACCOUNT_ACTIVATED" : "ACCOUNT_SUSPENDED", "USER", String(id));
     }
 
     res.json({ success: true, user: updatedUser });
@@ -282,7 +282,7 @@ export const deleteUser = async (req: Request, res: Response) => {
     if (!id) return res.status(400).json({ error: "User ID is required" });
 
     await prisma.user.delete({
-      where: { id },
+      where: { id: String(id) },
     });
     res.json({ message: "User deleted successfully" });
   } catch (error) {

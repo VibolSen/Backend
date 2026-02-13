@@ -30,8 +30,8 @@ export const getGradebookData = async (req: Request, res: Response) => {
       prisma.assignment.findMany({
         orderBy: { dueDate: 'asc' }
       }),
-      prisma.exam.findMany({
-        orderBy: { examDate: 'asc' }
+      (prisma.exam as any).findMany({
+        orderBy: { date: 'asc' }
       }),
       prisma.submission.findMany(),
       prisma.examSubmission.findMany()

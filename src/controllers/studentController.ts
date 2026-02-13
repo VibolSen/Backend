@@ -157,7 +157,7 @@ export const getStudentExams = async (req: Request, res: Response) => {
     }
 
     // Fetch all exams for groups the student is in
-    const exams = await prisma.exam.findMany({
+    const exams = await (prisma.exam as any).findMany({
       where: {
         group: {
           students: {
@@ -172,12 +172,12 @@ export const getStudentExams = async (req: Request, res: Response) => {
         }
       },
       orderBy: {
-        examDate: 'asc' // Show upcoming first
+        date: 'asc' // Show upcoming first
       }
     });
 
     // Map to the format expected by the frontend (Submission-centric)
-    const results = exams.map(e => {
+    const results = exams.map((e: any) => {
         const submission = e.submissions[0];
         return {
             id: submission?.id || e.id,
@@ -255,14 +255,14 @@ export const updateStudent = async (req: Request, res: Response) => {
     }
 
     const updatedStudent = await prisma.user.update({
-      where: { id },
+      where: { id: String(id) },
       data: userData,
     });
 
     if (currentCourses) {
       // Remove existing enrollments
       await prisma.enrollment.deleteMany({
-        where: { studentId: id }
+        where: { studentId: String(id) }
       });
       
       // Add new enrollments
@@ -293,7 +293,7 @@ export const deleteStudent = async (req: Request, res: Response) => {
     }
 
     await prisma.user.delete({
-      where: { id },
+      where: { id: String(id) },
     });
 
     res.json({ message: "Student deleted successfully" });

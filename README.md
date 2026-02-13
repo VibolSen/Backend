@@ -1,13 +1,15 @@
-# School Management System - Backend
+# School Management System - Backend (v2.0.0)
 
 This directory contains the backend for the School Management System. It's a Node.js application built with Express, TypeScript, and Prisma, using a MongoDB database.
 
 ## Features
 
-- RESTful API for managing students, teachers, courses, assignments, and more.
-- User authentication and authorization with JSON Web Tokens (JWT).
-- Data modeling and access with Prisma ORM.
-- API documentation with Swagger.
+- **Advanced LMS Logic**: Managed assignments, automated late submissions, and weighted grading.
+- **RESTful API**: Comprehensive endpoints for students, teachers, courses, and administration.
+- **Auth & Security**: RBAC (Role-Based Access Control) with JWT and Bcrypt.
+- **File Management**: Integrated with Cloudinary for secure file uploads and storage.
+- **Financial Integration**: Bakong KHQR generation for student fee payments.
+- **API Documentation**: Detailed interactive documentation using Swagger.
 
 ## Technologies Used
 

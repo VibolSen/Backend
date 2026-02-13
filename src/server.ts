@@ -32,6 +32,7 @@ import gradebookRoutes from './routes/gradebookRoutes';
 import certificateRoutes from './routes/certificateRoutes';
 import hrRoutes from './routes/hrRoutes';
 import careersRoutes from './routes/careersRoutes';
+import notificationRoutes from './routes/notificationRoutes';
 import prisma from './prisma';
 
 dotenv.config();
@@ -129,6 +130,7 @@ app.use('/api/gradebook', gradebookRoutes);
 app.use('/api/certificates', certificateRoutes);
 app.use('/api/hr', hrRoutes);
 app.use('/api/careers', careersRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.get('/api/course-analytics', getCourseAnalytics);
 
 app.get('/', (req, res) => {

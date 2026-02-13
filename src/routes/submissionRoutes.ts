@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { getSubmission, updateSubmission, createSubmission } from '../controllers/submissionController';
+import { upload } from '../middleware/upload';
 
 const router = Router();
 /**
@@ -58,7 +59,7 @@ const router = Router();
  *         description: Submission created
  */
 router.get('/:id', getSubmission);
-router.put('/:id', updateSubmission);
-router.post('/', createSubmission);
+router.put('/:id', upload.array('files', 5), updateSubmission);
+router.post('/', upload.array('files', 5), createSubmission);
 
 export default router;

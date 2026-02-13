@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { getExamSubmission, updateExamSubmission, createExamSubmission } from '../controllers/examSubmissionController';
+import { upload } from '../middleware/upload';
 
 const router = Router();
 
@@ -59,7 +60,7 @@ const router = Router();
  *         description: Exam submission created
  */
 router.get('/:id', getExamSubmission);
-router.put('/:id', updateExamSubmission);
-router.post('/', createExamSubmission);
+router.put('/:id', upload.array('files', 5), updateExamSubmission);
+router.post('/', upload.array('files', 5), createExamSubmission);
 
 export default router;

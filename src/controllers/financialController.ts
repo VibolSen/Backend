@@ -27,7 +27,7 @@ export const getInvoiceById = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const invoice = await prisma.invoice.findUnique({
-            where: { id },
+            where: { id: String(id) },
             include: {
                 student: {
                     select: { id: true, firstName: true, lastName: true, email: true }
@@ -90,27 +90,28 @@ export const createInvoice = async (req: Request, res: Response) => {
 export const deleteInvoice = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
+        const invoiceId = String(id); // Cast id to string
 
-        if (!id) {
+        if (!invoiceId) {
             return res.status(400).json({ error: "Invoice ID is required" });
         }
 
         // Before deleting the invoice, delete any associated invoice items
         await prisma.invoiceItem.deleteMany({
             where: {
-                invoiceId: id
+                invoiceId: invoiceId
             }
         });
 
         // Also delete any associated payments
         await prisma.payment.deleteMany({
             where: {
-                invoiceId: id
+                invoiceId: invoiceId
             }
         });
 
         await prisma.invoice.delete({
-            where: { id }
+            where: { id: invoiceId }
         });
         res.status(204).send();
     } catch (err) {
@@ -152,7 +153,7 @@ export const updateFee = async (req: Request, res: Response) => {
         const { id } = req.params;
         const { name, description, amount } = req.body;
         const fee = await prisma.fee.update({
-            where: { id },
+            where: { id: String(id) },
             data: {
                 name,
                 description,
@@ -169,7 +170,7 @@ export const updateFee = async (req: Request, res: Response) => {
 export const deleteFee = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        await prisma.fee.delete({ where: { id } });
+        await prisma.fee.delete({ where: { id: String(id) } });
         res.status(204).send();
     } catch (err) {
         console.error("Failed to delete fee:", err);
@@ -223,7 +224,7 @@ export const createPayment = async (req: Request, res: Response) => {
 
         if (invoice) {
             // 2. Calculate total paid including the new payment
-            const totalPaid = invoice.payments.reduce((sum, p) => sum + p.amount, 0);
+            const totalPaid = invoice.payments.reduce((sum: number, p) => sum + p.amount, 0);
             
             // 3. Update status if fully paid
             if (totalPaid >= invoice.totalAmount) {
@@ -249,7 +250,7 @@ export const updatePayment = async (req: Request, res: Response) => {
         const { id } = req.params;
         const { amount, paymentDate, paymentMethod, transactionId, notes } = req.body;
         const payment = await prisma.payment.update({
-            where: { id },
+            where: { id: String(id) },
             data: {
                 amount: Number(amount),
                 paymentDate: new Date(paymentDate),
@@ -269,7 +270,7 @@ export const deletePayment = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         // Optionally revert invoice status if needed, but for now simple delete
-        await prisma.payment.delete({ where: { id } });
+        await prisma.payment.delete({ where: { id: String(id) } });
         res.status(204).send();
     } catch (err) {
         console.error("Failed to delete payment:", err);
@@ -313,7 +314,7 @@ export const updateExpense = async (req: Request, res: Response) => {
         const { id } = req.params;
         const { category, description, amount, date } = req.body;
         const expense = await prisma.expense.update({
-            where: { id },
+            where: { id: String(id) },
             data: {
                 category,
                 description,
@@ -332,7 +333,7 @@ export const deleteExpense = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         await prisma.expense.delete({
-            where: { id }
+            where: { id: String(id) }
         });
         res.status(204).send();
     } catch (err) {
@@ -408,7 +409,7 @@ export const checkBakongStatus = async (req: Request, res: Response) => {
         
         // Find the invoice and check if it has been paid
         const invoice = await prisma.invoice.findUnique({
-            where: { id: invoiceId },
+            where: { id: String(invoiceId) },
             include: {
                 payments: {
                     where: {
@@ -426,7 +427,7 @@ export const checkBakongStatus = async (req: Request, res: Response) => {
         res.json({
             status: invoice.status, // "PAID", "SENT", "OVERDUE"
             isPaid: invoice.status === "PAID", // Only trigger success if invoice is fully settled
-            totalPaid: invoice.payments.reduce((sum, p) => sum + p.amount, 0)
+            totalPaid: invoice.payments.reduce((sum: number, p) => sum + p.amount, 0) // Explicitly type sum
         });
     } catch (err) {
         console.error("Check status error:", err);
@@ -442,8 +443,8 @@ export const bakongCallback = async (req: Request, res: Response) => {
 
         // 1. Find the invoice
         const invoice = await prisma.invoice.findUnique({
-            where: { id: invoiceId },
-            include: { payments: true }
+            where: { id: String(invoiceId) }, // Cast invoiceId to string
+            include: { payments: true } // Ensure payments are included
         });
 
         if (!invoice) {
@@ -451,7 +452,7 @@ export const bakongCallback = async (req: Request, res: Response) => {
         }
 
         // 2. Create the payment with sender details
-        const payment = await (prisma.payment as any).create({
+        const payment = await prisma.payment.create({ // Removed as any
             data: {
                 invoiceId: invoice.id,
                 amount: Number(amount),
@@ -465,7 +466,7 @@ export const bakongCallback = async (req: Request, res: Response) => {
         });
 
         // 3. Check if fully paid and update status
-        const totalPaid = invoice.payments.reduce((sum, p) => sum + p.amount, 0) + Number(amount);
+        const totalPaid = invoice.payments.reduce((sum: number, p) => sum + p.amount, 0) + Number(amount); // Explicitly type sum
         if (totalPaid >= invoice.totalAmount) {
             await prisma.invoice.update({
                 where: { id: invoiceId },

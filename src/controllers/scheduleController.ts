@@ -52,7 +52,7 @@ export const updateSchedule = async (req: Request, res: Response) => {
     const { title, isRecurring, startDate, endDate, daysOfWeek, creatorId, assignedToTeacherId, assignedToGroupId } = req.body;
 
     const updatedSchedule = await prisma.schedule.update({
-      where: { id },
+      where: { id: String(id) },
       data: {
         title,
         isRecurring,
@@ -74,7 +74,7 @@ export const updateSchedule = async (req: Request, res: Response) => {
 export const deleteSchedule = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    await prisma.schedule.delete({ where: { id } });
+    await prisma.schedule.delete({ where: { id: String(id) } });
     res.json({ message: "Schedule deleted successfully" });
   } catch (err) {
     console.error("Failed to delete schedule:", err);

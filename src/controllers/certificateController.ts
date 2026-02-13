@@ -32,7 +32,7 @@ export const getCertificateById = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     const certificate = await prisma.certificate.findUnique({
-      where: { id },
+      where: { id: String(id) },
       include: {
         course: true,
         student: {
@@ -78,7 +78,7 @@ export const updateCertificate = async (req: Request, res: Response) => {
   const { recipient, courseId, issueDate, expiryDate, studentId } = req.body;
   try {
     const certificate = await prisma.certificate.update({
-      where: { id },
+      where: { id: String(id) },
       data: {
         recipient,
         courseId,
@@ -101,7 +101,7 @@ export const deleteCertificate = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     await prisma.certificate.delete({
-      where: { id }
+      where: { id: String(id) }
     });
     res.json({ message: 'Certificate deleted successfully' });
   } catch (error: any) {
@@ -146,7 +146,7 @@ export const downloadCertificate = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const certificate = await prisma.certificate.findUnique({
-      where: { id },
+      where: { id: String(id) },
       include: { course: true }
     });
 

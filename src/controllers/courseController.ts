@@ -36,7 +36,7 @@ export const getCourseById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const course = await prisma.course.findUnique({
-      where: { id },
+      where: { id: String(id) },
       include: {
         leadBy: {
           select: {
@@ -72,7 +72,7 @@ export const getCourseById = async (req: Request, res: Response) => {
 
 export const createCourse = async (req: Request, res: Response) => {
   try {
-    const { name, leadById, departmentIds } = req.body; // Expecting departmentIds generic array
+    const { name, code, credits, description, leadById, departmentIds } = req.body;
 
     if (!name) {
       res.status(400).json({ error: 'Name is required' });
@@ -82,6 +82,9 @@ export const createCourse = async (req: Request, res: Response) => {
     const newCourse = await prisma.course.create({
       data: {
         name,
+        code,
+        credits: credits ? parseInt(credits) : undefined,
+        description,
         leadById,
       },
     });
@@ -105,22 +108,28 @@ export const createCourse = async (req: Request, res: Response) => {
 export const updateCourse = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, leadById, departmentIds } = req.body;
+    const { name, code, credits, description, leadById, departmentIds } = req.body;
 
     const updatedCourse = await prisma.course.update({
-      where: { id },
-      data: { name, leadById },
+      where: { id: String(id) },
+      data: {
+        name,
+        code,
+        credits: credits ? parseInt(credits) : undefined,
+        description,
+        leadById
+      },
     });
 
     if (departmentIds) {
         // Clear existing
-        await prisma.courseDepartment.deleteMany({ where: { courseId: id }});
-        
+        await prisma.courseDepartment.deleteMany({ where: { courseId: String(id) }});
+
         // Add new
         if(Array.isArray(departmentIds) && departmentIds.length > 0) {
              await prisma.courseDepartment.createMany({
                 data: departmentIds.map((deptId: string) => ({
-                    courseId: id,
+                    courseId: String(id),
                     departmentId: deptId
                 }))
             })
@@ -137,14 +146,13 @@ export const updateCourse = async (req: Request, res: Response) => {
 export const deleteCourse = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    await prisma.course.delete({ where: { id } });
+    await prisma.course.delete({ where: { id: String(id) } });
     res.json({ message: "Course deleted successfully" });
   } catch (error) {
     console.error("Error deleting course:", error);
     res.status(500).json({ error: "Failed to delete course" });
   }
 };
-
 export const getCourseAnalytics = async (req: Request, res: Response) => {
   try {
     const { courseId } = req.query;

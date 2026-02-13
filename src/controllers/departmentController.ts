@@ -42,7 +42,7 @@ export const createDepartment = async (req: Request, res: Response) => {
       data: {
         name,
         facultyId,
-        headId
+        headId: headId || undefined
       },
     });
 
@@ -59,8 +59,12 @@ export const updateDepartment = async (req: Request, res: Response) => {
     const { name, facultyId, headId } = req.body;
 
     const updatedDepartment = await prisma.department.update({
-      where: { id },
-      data: { name, facultyId, headId },
+      where: { id: String(id) },
+      data: {
+        name,
+        facultyId,
+        headId: headId || null
+      },
     });
 
     res.json(updatedDepartment);
@@ -73,7 +77,7 @@ export const updateDepartment = async (req: Request, res: Response) => {
 export const deleteDepartment = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    await prisma.department.delete({ where: { id } });
+    await prisma.department.delete({ where: { id: String(id) } });
     res.json({ message: "Department deleted successfully" });
   } catch (error) {
     console.error("Error deleting department:", error);

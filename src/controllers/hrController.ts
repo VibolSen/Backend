@@ -76,7 +76,7 @@ export const updateJobPosting = async (req: Request, res: Response) => {
     } = req.body;
 
     const posting = await prisma.jobPosting.update({
-      where: { id },
+      where: { id: String(id) },
       data: {
         title,
         description,
@@ -102,7 +102,7 @@ export const deleteJobPosting = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
     await prisma.jobPosting.delete({
-      where: { id }
+      where: { id: String(id) }
     });
     res.json({ message: 'Job posting deleted successfully' });
   } catch (err: any) {

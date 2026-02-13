@@ -12,7 +12,7 @@ export const getGroups = async (req: Request, res: Response) => {
          _count: {
             select: { students: true, courses: true }
          }
-      },
+      } as any,
       orderBy: { name: 'asc' },
     });
     res.json(groups);
@@ -26,13 +26,13 @@ export const getGroup = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const group = await prisma.group.findUnique({
-      where: { id },
+      where: { id: String(id) },
       include: {
         courses: true,
         students: {
           select: { id: true, firstName: true, lastName: true, email: true },
-        },
-      },
+        }
+      } as any,
     });
     if (!group) {
       return res.status(404).json({ error: "Group not found" });
@@ -46,7 +46,7 @@ export const getGroup = async (req: Request, res: Response) => {
 
 export const createGroup = async (req: Request, res: Response) => {
   try {
-    const { name, courseIds, studentIds } = req.body;
+    const { name, academicYear, monitorId, courseIds, studentIds } = req.body;
 
     if (!name) {
       res.status(400).json({ error: 'Name is required' });
@@ -56,9 +56,11 @@ export const createGroup = async (req: Request, res: Response) => {
     const newGroup = await prisma.group.create({
       data: {
          name,
+         academicYear,
+         monitorId: monitorId || undefined,
          courses: courseIds ? { connect: courseIds.map((id: string) => ({ id })) } : undefined,
          students: studentIds ? { connect: studentIds.map((id: string) => ({ id })) } : undefined
-      },
+      } as any,
     });
 
     res.status(201).json(newGroup);
@@ -71,15 +73,17 @@ export const createGroup = async (req: Request, res: Response) => {
 export const updateGroup = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, courseIds, studentIds } = req.body;
+    const { name, academicYear, monitorId, courseIds, studentIds } = req.body;
 
     const updatedGroup = await prisma.group.update({
-      where: { id },
+      where: { id: String(id) },
       data: {
         name,
+        academicYear,
+        monitorId: monitorId || null,
         courses: courseIds ? { set: courseIds.map((id: string) => ({ id })) } : undefined,
         students: studentIds ? { set: studentIds.map((id: string) => ({ id })) } : undefined
-      },
+      } as any,
     });
 
     res.json(updatedGroup);
@@ -92,7 +96,7 @@ export const updateGroup = async (req: Request, res: Response) => {
 export const deleteGroup = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    await prisma.group.delete({ where: { id } });
+    await prisma.group.delete({ where: { id: String(id) } });
     res.json({ message: "Group deleted successfully" });
   } catch (error) {
     console.error("Error deleting group:", error);

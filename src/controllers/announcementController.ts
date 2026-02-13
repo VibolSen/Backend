@@ -46,7 +46,7 @@ export const deleteAnnouncement = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     await prisma.announcement.delete({
-      where: { id },
+      where: { id: String(id) },
     });
     res.status(204).send();
   } catch (err) {

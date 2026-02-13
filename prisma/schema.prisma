@@ -96,6 +96,8 @@ model User {
   certificates Certificate[]
   
   auditLogs      AuditLog[]   @relation("ActorLogs")
+  monitoredGroups Group[] @relation("GroupMonitor")
+  notifications  Notification[]
 }
 
 model AuditLog {
@@ -195,12 +197,19 @@ model Course {
   groupIds     String[]     @db.ObjectId
   leadBy       User?        @relation("CourseLead", fields: [leadById], references: [id])
   leadById     String?      @db.ObjectId
+  code         String?      @unique
+  credits      Int?         @default(3)
+  description  String?
 
   // ✅ Back relation for Enrollment
   enrollments Enrollment[]
   courseDepartments CourseDepartment[]
   announcements Announcement[]
   certificates Certificate[] // New: Relation to Certificate model
+  
+  // ✅ New Relations for Assignment & Exam
+  assignments Assignment[]
+  exams       Exam[]
 }
 
 model Certificate {
@@ -252,6 +261,10 @@ model Group {
   courseIds  String[] @db.ObjectId
   students   User[]   @relation(fields: [studentIds], references: [id])
   studentIds String[] @db.ObjectId
+  
+  monitor    User?    @relation("GroupMonitor", fields: [monitorId], references: [id])
+  monitorId  String?  @db.ObjectId
+  academicYear String?
 
   assignments Assignment[]
   exams       Exam[]
@@ -259,17 +272,43 @@ model Group {
   schedules   Schedule[] @relation("SchedulesAssignedToGroup")
 }
 
+enum AssignmentType {
+  HOMEWORK
+  PROJECT
+  ESSAY
+  PRESENTATION
+  QUIZ
+  OTHER
+}
+
+enum AssignmentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
 model Assignment {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
   title       String
   description String?
   dueDate     DateTime?
-  points      Int?
+  
+  // New Fields
+  type        AssignmentType   @default(HOMEWORK)
+  status      AssignmentStatus @default(DRAFT)
+  weight      Float?           @default(0) // Contribution to final grade (e.g., 10%)
+  maxPoints   Int?             @default(100)
+  attachmentUrls String[]      // Links to files uploaded by teacher
 
   teacher     User         @relation("AssignmentsCreated", fields: [teacherId], references: [id])
   teacherId   String       @db.ObjectId
+  
   group       Group        @relation(fields: [groupId], references: [id])
   groupId     String       @db.ObjectId
+
+  course      Course?      @relation(fields: [courseId], references: [id])
+  courseId    String?      @db.ObjectId
+
   submissions Submission[]
 }
 
@@ -277,9 +316,12 @@ model Submission {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
   content     String?
+  fileUrls    String[] // New: Student file uploads
   submittedAt DateTime?
   grade       Int?
   feedback    String?
+  
+  isLate      Boolean  @default(false) // New: Automatic late flag
 
   status SubmissionStatus @default(PENDING)
 
@@ -291,16 +333,48 @@ model Submission {
   @@unique([assignmentId, studentId])
 }
 
+enum ExamType {
+  WRITTEN
+  ORAL
+  PRACTICAL
+  ONLINE_QUIZ
+  MIDTERM
+  FINAL
+}
+
+enum ExamStatus {
+  SCHEDULED
+  ONGOING
+  COMPLETED
+  GRADED
+  CANCELLED
+}
+
 model Exam {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
   title       String
   description String?
-  examDate    DateTime?
+  
+  // Revised Time Fields
+  date        DateTime? // General date
+  startTime   DateTime? // Specific start
+  endTime     DateTime? // Specific end
+  
+  location    String?   // e.g., "Room 304"
+  type        ExamType  @default(WRITTEN)
+  status      ExamStatus @default(SCHEDULED)
+  maxScore    Int?      @default(100)
+  attachmentUrls String[]      // Links to files uploaded by teacher
 
   teacher     User             @relation("ExamsCreated", fields: [teacherId], references: [id])
   teacherId   String           @db.ObjectId
+  
   group       Group            @relation(fields: [groupId], references: [id])
   groupId     String           @db.ObjectId
+
+  course      Course?          @relation(fields: [courseId], references: [id])
+  courseId    String?          @db.ObjectId
+
   submissions ExamSubmission[]
 }
 
@@ -308,6 +382,7 @@ model ExamSubmission {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
   content     String?
+  fileUrls    String[] // New: For online exams requiring uploads
   submittedAt DateTime?
   grade       Int?
   feedback    String?
@@ -405,7 +480,7 @@ model JobApplication {
   id              String       @id @default(auto()) @map("_id") @db.ObjectId
   applicantName   String
   applicantEmail  String
-  resume          String // URL to the uploaded resume
+  resume          String? // URL to the uploaded resume
   coverLetter     String? // URL to the uploaded cover letter
   appliedAt       DateTime     @default(now())
   jobPosting      JobPosting   @relation(fields: [jobPostingId], references: [id])
@@ -486,4 +561,15 @@ model Expense {
   date        DateTime
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+model Notification {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   // e.g., "ASSIGNMENT", "GRADE", "EXAM", "ANNOUNCEMENT"
+  isRead    Boolean  @default(false)
+  link      String?  // Optional link to redirect user
+  createdAt DateTime @default(now())
 }

@@ -42,7 +42,7 @@ export const deleteLibraryResource = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     await prisma.libraryResource.delete({
-      where: { id },
+      where: { id: String(id) },
     });
     res.status(204).send();
   } catch (err) {
@@ -57,7 +57,7 @@ export const updateLibraryResource = async (req: Request, res: Response) => {
     const { title, author, coverImage, department, description, publicationYear } = req.body;
 
     const updatedResource = await prisma.libraryResource.update({
-      where: { id },
+      where: { id: String(id) },
       data: {
         title,
         author,

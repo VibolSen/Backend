@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { getAssignments, getAssignment, createAssignment, updateAssignment, deleteAssignment } from '../controllers/assignmentController';
+import { upload } from '../middleware/upload';
 
 const router = Router();
 
@@ -65,8 +66,8 @@ const router = Router();
  */
 router.get('/', getAssignments);
 router.get('/:id', getAssignment);
-router.post('/', createAssignment);
-router.put('/:id', updateAssignment);
+router.post('/', upload.array('attachments', 5), createAssignment);
+router.put('/:id', upload.array('attachments', 5), updateAssignment);
 router.delete('/:id', deleteAssignment);
 
 export default router;

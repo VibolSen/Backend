@@ -33,6 +33,12 @@ enum AttendanceStatus {
   LATE
 }
 
+enum SessionStatus {
+  ACTIVE
+  CANCELLED
+  RESCHEDULED
+}
+
 model Attendance {
   id        String    @id @default(auto()) @map("_id") @db.ObjectId
   date      DateTime
@@ -210,6 +216,7 @@ model Course {
   // ✅ New Relations for Assignment & Exam
   assignments Assignment[]
   exams       Exam[]
+  schedules   Schedule[]
 }
 
 model Certificate {
@@ -415,6 +422,7 @@ model Session {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
   startTime   DateTime
   endTime     DateTime
+  status      SessionStatus @default(ACTIVE)
   schedule    Schedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
   scheduleId  String    @db.ObjectId
 }
@@ -422,6 +430,7 @@ model Session {
 model Schedule {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
   title       String
+  location    String?
 
   isRecurring Boolean   @default(false)
   startDate   DateTime? 
@@ -436,6 +445,9 @@ model Schedule {
 
   assignedToGroup   Group?   @relation("SchedulesAssignedToGroup", fields: [assignedToGroupId], references: [id])
   assignedToGroupId String? @db.ObjectId
+
+  course      Course?   @relation(fields: [courseId], references: [id])
+  courseId    String?   @db.ObjectId
 
   sessions    Session[]
 }

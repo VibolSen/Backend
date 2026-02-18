@@ -3,9 +3,15 @@ import prisma from '../prisma';
 import { KHQR, TAG, CURRENCY, COUNTRY } from 'ts-khqr';
 
 // Invoices
-export const getInvoices = async (req: Request, res: Response) => {
+export const getInvoices = async (req: any, res: Response) => {
   try {
+    const { userId, role } = req.user;
+    
+    // If student, only show their own invoices. Otherwise (Admin/Finance), show all.
+    const whereClause = role === 'STUDENT' ? { studentId: userId } : {};
+
     const invoices = await prisma.invoice.findMany({
+        where: whereClause,
         include: {
             student: {
                 select: { firstName: true, lastName: true, email: true }
@@ -346,30 +352,23 @@ export const generatePaymentQR = async (req: Request, res: Response) => {
     try {
         const { amount, currency = "USD", invoiceId } = req.body;
         
-        console.log("Configuring KHQR...");
+        console.log("Configuring KHQR for Invoice:", invoiceId);
         const accountID = process.env.KHQR_ACCOUNT_ID?.trim() || "ishinvin@devb"; 
         const merchantName = process.env.KHQR_MERCHANT_NAME?.trim() || "Step Academy"; 
-        console.log(`Using KHQR ID: ${accountID}, Merchant: ${merchantName}`);
-
-        // Format a cleaner bill number (INV-LAST8)
-        const shortId = invoiceId ? invoiceId.substring(invoiceId.length - 8) : Date.now().toString().substring(8);
-        const validBillNumber = `INV-${shortId}`;
 
         const qrCurrency = currency === "KHR" ? CURRENCY.KHR : CURRENCY.USD;
         
-        // Handle Currency Conversion
-        // Assuming base invoice amount is always in USD.
-        // If requesting KHR, convert USD to KHR (Rate: 4100)
         let finalAmount = Number(amount);
         if (qrCurrency === CURRENCY.KHR) {
              finalAmount = Math.ceil(finalAmount * 4100); 
         }
         
-        // Extract basic ID for MerchantID field (e.g. 003128656 from 003128656@aba)
-        const merchantID = accountID.split('@')[0];
+        // Critical Fix: Use the FULL invoiceId as the billNumber so the callback can find it.
+        // Bakong billNumber limit is 25 chars. MongoDB ObjectId is 24 chars.
+        const validBillNumber = invoiceId;
 
         const payload = {
-            tag: TAG.INDIVIDUAL, // Bakong Wallet is typically Individual
+            tag: TAG.INDIVIDUAL,
             accountID: accountID,
             currency: qrCurrency,
             amount: finalAmount,
@@ -378,23 +377,18 @@ export const generatePaymentQR = async (req: Request, res: Response) => {
             countryCode: COUNTRY.KH,
             expirationTimestamp: Date.now() + 15 * 60 * 1000,
             additionalData: {
-                billNumber: validBillNumber
+                billNumber: validBillNumber // Use full ID here
             }
         };
-
-        console.log("KHQR Payload:", JSON.stringify(payload, null, 2));
 
         const response = KHQR.generate(payload);
 
         if (response.status && response.status.code === 0 && response.data) {
-             console.log("KHQR Success");
              res.status(200).json({ 
                  qrString: response.data.qr,
                  md5: response.data.md5 
              });
         } else {
-             console.error("KHQR Failed:", response);
-             // Safety check: if response doesn't have status, it might be a different structure, but from types it returns ResponseResult
              res.status(400).json({ error: "Failed to generate QR code", details: response });
         }
     } catch (err: any) {
@@ -406,53 +400,54 @@ export const generatePaymentQR = async (req: Request, res: Response) => {
 export const checkBakongStatus = async (req: Request, res: Response) => {
     try {
         const { invoiceId } = req.params;
-        
-        // Find the invoice and check if it has been paid
         const invoice = await prisma.invoice.findUnique({
             where: { id: String(invoiceId) },
-            include: {
-                payments: {
-                    where: {
-                        paymentMethod: "BANK_TRANSFER" // This represents KHQR payments
-                    }
-                }
-            }
+            include: { payments: true }
         });
 
-        if (!invoice) {
-            return res.status(404).json({ error: "Invoice not found" });
-        }
+        if (!invoice) return res.status(404).json({ error: "Invoice not found" });
 
-        // Return the payment status
         res.json({
-            status: invoice.status, // "PAID", "SENT", "OVERDUE"
-            isPaid: invoice.status === "PAID", // Only trigger success if invoice is fully settled
-            totalPaid: invoice.payments.reduce((sum: number, p) => sum + p.amount, 0) // Explicitly type sum
+            status: invoice.status,
+            isPaid: invoice.status === "PAID",
+            totalPaid: invoice.payments.reduce((sum: number, p) => sum + p.amount, 0)
         });
     } catch (err) {
-        console.error("Check status error:", err);
         res.status(500).json({ error: "Failed to check status" });
     }
 };
 
 export const bakongCallback = async (req: Request, res: Response) => {
     try {
-        const { invoiceId, amount, transactionId, md5, senderAccount, senderName } = req.body;
+        const { invoiceId, billNumber, amount, transactionId, md5, senderAccount, senderName } = req.body;
         
-        console.log("Bakong Callback Received:", { invoiceId, amount, transactionId, senderAccount });
+        // Identify the actual invoice ID (try invoiceId first, then billNumber)
+        let targetInvoiceId = invoiceId || billNumber;
+        
+        // If billNumber has a prefix like "INV-", strip it
+        if (targetInvoiceId && typeof targetInvoiceId === 'string' && targetInvoiceId.startsWith("INV-")) {
+            targetInvoiceId = targetInvoiceId.replace("INV-", "");
+        }
+
+        console.log("Processing Bakong Callback:", { targetInvoiceId, amount, transactionId });
+
+        if (!targetInvoiceId || targetInvoiceId.length !== 24) {
+            console.error("Invalid Invoice ID received:", targetInvoiceId);
+            return res.status(400).json({ error: "Invalid Invoice ID" });
+        }
 
         // 1. Find the invoice
         const invoice = await prisma.invoice.findUnique({
-            where: { id: String(invoiceId) }, // Cast invoiceId to string
-            include: { payments: true } // Ensure payments are included
+            where: { id: targetInvoiceId },
+            include: { payments: true }
         });
 
         if (!invoice) {
-            return res.status(404).json({ error: "Invoice not found" });
+            return res.status(404).json({ error: "Invoice not found in system" });
         }
 
-        // 2. Create the payment with sender details
-        const payment = await prisma.payment.create({ // Removed as any
+        // 2. Create the payment
+        await (prisma as any).payment.create({ 
             data: {
                 invoiceId: invoice.id,
                 amount: Number(amount),
@@ -461,22 +456,271 @@ export const bakongCallback = async (req: Request, res: Response) => {
                 transactionId: transactionId || `BK-${Date.now()}`,
                 senderAccount: senderAccount || "N/A",
                 senderName: senderName || "BAKONG_USER",
+                receiverAccount: process.env.KHQR_ACCOUNT_ID || "ishinvin@devb",
                 notes: `Automatic detection via Bakong (MD5: ${md5 || 'N/A'})`
             }
         });
 
-        // 3. Check if fully paid and update status
-        const totalPaid = invoice.payments.reduce((sum: number, p) => sum + p.amount, 0) + Number(amount); // Explicitly type sum
-        if (totalPaid >= invoice.totalAmount) {
+        // 3. Update Status (Use a small epsilon for float comparison)
+        const totalPaid = invoice.payments.reduce((sum: number, p) => sum + p.amount, 0) + Number(amount);
+        if (totalPaid >= (invoice.totalAmount - 0.01)) {
             await prisma.invoice.update({
-                where: { id: invoiceId },
+                where: { id: invoice.id },
                 data: { status: "PAID" }
             });
+            console.log(`Invoice ${invoice.id} marked as PAID`);
+        } else {
+            // If it was DRAFT, at least move it to SENT if a partial payment is made
+            if (invoice.status === "DRAFT") {
+                await prisma.invoice.update({
+                    where: { id: invoice.id },
+                    data: { status: "SENT" }
+                });
+            }
         }
 
         res.json({ success: true, message: "Payment recorded successfully" });
     } catch (err) {
         console.error("Callback error:", err);
-        res.status(500).json({ error: "Failed to process callback" });
+        res.status(500).json({ error: "Internal Server Error during callback processing" });
+    }
+};
+
+// --- User Benefits & Payroll ---
+
+export const getUserBenefits = async (req: Request, res: Response) => {
+    try {
+        const benefits = await (prisma as any).userBenefit.findMany({
+            include: {
+                user: {
+                    select: { firstName: true, lastName: true, email: true, role: true }
+                }
+            }
+        });
+        res.json(benefits);
+    } catch (err) {
+        console.error("Failed to fetch benefits:", err);
+        res.status(500).json({ error: "Failed to fetch benefits" });
+    }
+};
+
+export const updateUserBenefit = async (req: Request, res: Response) => {
+    try {
+        const { userId, baseSalary, bonus, allowance, deduction, currency } = req.body;
+        
+        const benefit = await (prisma as any).userBenefit.upsert({
+            where: { userId },
+            update: { baseSalary, bonus, allowance, deduction, currency },
+            create: { userId, baseSalary, bonus, allowance, deduction, currency }
+        });
+        
+        res.json(benefit);
+    } catch (err) {
+        console.error("Failed to update benefit:", err);
+        res.status(500).json({ error: "Failed to update benefit" });
+    }
+};
+
+export const getPayrolls = async (req: Request, res: Response) => {
+    try {
+        const payrolls = await (prisma as any).payroll.findMany({
+            include: {
+                user: {
+                    select: { firstName: true, lastName: true, email: true, role: true }
+                }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+        res.json(payrolls);
+    } catch (err) {
+        console.error("Failed to fetch payrolls:", err);
+        res.status(500).json({ error: "Failed to fetch payrolls" });
+    }
+};
+
+export const generatePayrolls = async (req: Request, res: Response) => {
+    try {
+        const { period } = req.body; // e.g., "2024-03"
+        
+        // 1. Get all users with benefits
+        const usersWithBenefits = await (prisma as any).userBenefit.findMany({
+            include: { user: true }
+        });
+        
+        const generatedPayrolls = [];
+        
+        for (const benefit of usersWithBenefits) {
+            // Check if payroll already exists for this user and period
+            const existing = await (prisma as any).payroll.findFirst({
+                where: { userId: benefit.userId, period }
+            });
+            
+            if (existing) continue;
+            
+            const amount = benefit.baseSalary + benefit.allowance;
+            const netSalary = amount + benefit.bonus - benefit.deduction;
+            
+            const payroll = await (prisma as any).payroll.create({
+                data: {
+                    userId: benefit.userId,
+                    amount: amount,
+                    bonus: benefit.bonus,
+                    deduction: benefit.deduction,
+                    netSalary: netSalary,
+                    period: period,
+                    status: "PENDING"
+                }
+            });
+            generatedPayrolls.push(payroll);
+        }
+        
+        res.status(201).json({ 
+            message: `Generated ${generatedPayrolls.length} payroll records for ${period}`,
+            payrolls: generatedPayrolls 
+        });
+    } catch (err) {
+        console.error("Failed to generate payrolls:", err);
+        res.status(500).json({ error: "Failed to generate payrolls" });
+    }
+};
+
+export const updatePayrollStatus = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { status, paymentDate, transactionHash } = req.body;
+        
+        const payroll = await (prisma as any).payroll.update({
+            where: { id },
+            data: { 
+                status, 
+                paymentDate: paymentDate ? new Date(paymentDate) : undefined,
+                transactionHash 
+            }
+        });
+        
+        res.json(payroll);
+    } catch (err) {
+        console.error("Failed to update payroll:", err);
+        res.status(500).json({ error: "Failed to update payroll" });
+    }
+};
+
+// --- Budgeting ---
+
+export const getBudgets = async (req: Request, res: Response) => {
+    try {
+        const budgets = await (prisma as any).budget.findMany({
+            include: {
+                department: true,
+                items: true
+            }
+        });
+        res.json(budgets);
+    } catch (err) {
+        console.error("Failed to fetch budgets:", err);
+        res.status(500).json({ error: "Failed to fetch budgets" });
+    }
+};
+
+export const createBudget = async (req: Request, res: Response) => {
+    try {
+        const { departmentId, amount, period } = req.body;
+        
+        const budget = await (prisma as any).budget.create({
+            data: {
+                departmentId,
+                amount,
+                period,
+                spent: 0,
+                status: "ACTIVE"
+            }
+        });
+        
+        res.status(201).json(budget);
+    } catch (err) {
+        console.error("Failed to create budget:", err);
+        res.status(500).json({ error: "Failed to create budget" });
+    }
+};
+
+export const addBudgetItem = async (req: Request, res: Response) => {
+    try {
+        const { budgetId, description, amount } = req.body;
+        
+        // 1. Create budget item
+        const item = await (prisma as any).budgetItem.create({
+            data: {
+                budgetId,
+                description,
+                amount
+            }
+        });
+        
+        // 2. Update spent amount in budget
+        await (prisma as any).budget.update({
+            where: { id: budgetId },
+            data: {
+                spent: { increment: amount }
+            }
+        });
+        
+        res.status(201).json(item);
+    } catch (err) {
+        console.error("Failed to add budget item:", err);
+        res.status(500).json({ error: "Failed to add budget item" });
+    }
+};
+
+export const getBudgetById = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const budget = await (prisma as any).budget.findUnique({
+            where: { id },
+            include: {
+                department: true,
+                items: { orderBy: { date: 'desc' } }
+            }
+        });
+        res.json(budget);
+    } catch (err) {
+        console.error("Failed to fetch budget details:", err);
+        res.status(500).json({ error: "Failed to fetch budget details" });
+    }
+};
+export const sendReminders = async (req: Request, res: Response) => {
+    try {
+        // 1. Get all invoices that are "SENT" or "OVERDUE"
+        const pendingInvoices = await prisma.invoice.findMany({
+            where: {
+                status: { in: ["SENT", "OVERDUE"] }
+            },
+            include: {
+                student: true
+            }
+        });
+
+        const notifications = [];
+
+        for (const invoice of pendingInvoices) {
+            // Create notification for student
+            const notification = await prisma.notification.create({
+                data: {
+                    userId: invoice.studentId,
+                    title: "Payment Reminder",
+                    message: `Reminder: You have a pending invoice (${invoice.id.slice(-8)}) for $${invoice.totalAmount}. Please ensure payment is made by ${invoice.dueDate.toLocaleDateString()}.`,
+                    type: "PAYMENT",
+                    isRead: false
+                }
+            });
+            notifications.push(notification);
+        }
+
+        res.json({ 
+            success: true, 
+            message: `Sent ${notifications.length} payment reminders successfully.` 
+        });
+    } catch (err) {
+        console.error("Failed to send reminders:", err);
+        res.status(500).json({ error: "Failed to send reminders" });
     }
 };

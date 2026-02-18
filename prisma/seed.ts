@@ -12,18 +12,22 @@ async function main() {
   const vibolPassword = await bcrypt.hash('Vibol2020', 10); // Hash for the new admin
 
   // Create Users
-  const admin = await prisma.user.create({
-    data: {
-      email: 'vibolsen2002@gmail.com', // Updated email
-      firstName: 'Vibol', // Updated first name
-      lastName: 'Sen', // Updated last name
-      password: vibolPassword, // Updated password
+  const admin = await prisma.user.upsert({
+    where: { email: 'vibolsen2002@gmail.com' },
+    update: {},
+    create: {
+      email: 'vibolsen2002@gmail.com',
+      firstName: 'Vibol',
+      lastName: 'Sen',
+      password: vibolPassword,
       role: Role.ADMIN,
     },
   });
 
-  const teacher = await prisma.user.create({
-    data: {
+  const teacher = await prisma.user.upsert({
+    where: { email: 'teacher@step.com' },
+    update: {},
+    create: {
       email: 'teacher@step.com',
       firstName: 'Teacher',
       lastName: 'User',
@@ -32,8 +36,10 @@ async function main() {
     },
   });
 
-  const student = await prisma.user.create({
-    data: {
+  const student = await prisma.user.upsert({
+    where: { email: 'student@step.com' },
+    update: {},
+    create: {
       email: 'student@step.com',
       firstName: 'Student',
       lastName: 'User',
@@ -42,21 +48,26 @@ async function main() {
     },
   });
 
-  console.log(`Created users:`, { admin, teacher, student });
+  console.log(`Upserted users:`, { admin, teacher, student });
 
   // Create Department
-  const department = await prisma.department.create({
-    data: {
+  const department = await prisma.department.upsert({
+    where: { name: 'Computer Science' },
+    update: {},
+    create: {
       name: 'Computer Science',
     },
   });
 
-  console.log(`Created department:`, department);
+  console.log(`Upserted department:`, department);
 
   // Create Courses
-  const course1 = await prisma.course.create({
-    data: {
+  const course1 = await prisma.course.upsert({
+    where: { name: 'Introduction to Programming' },
+    update: { code: 'CS101' },
+    create: {
       name: 'Introduction to Programming',
+      code: 'CS101',
       leadById: teacher.id,
       courseDepartments: {
         create: {
@@ -66,9 +77,12 @@ async function main() {
     },
   });
 
-  const course2 = await prisma.course.create({
-    data: {
+  const course2 = await prisma.course.upsert({
+    where: { name: 'Data Structures and Algorithms' },
+    update: { code: 'CS102' },
+    create: {
       name: 'Data Structures and Algorithms',
+      code: 'CS102',
       leadById: teacher.id,
       courseDepartments: {
         create: {

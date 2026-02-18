@@ -4,7 +4,11 @@ import { authenticateToken, authorizeRoles } from '../middleware/auth';
 
 const router = Router();
 
-// Apply authentication to all financial routes
+// Public/External Callback (NO AUTH REQUIRED)
+// This must be BEFORE the authenticateToken middleware because the bank doesn't have a JWT
+router.post('/bakong-callback', bakongCallback); 
+
+// Apply authentication to ALL other financial routes
 router.use(authenticateToken);
 
 /**
@@ -92,7 +96,7 @@ router.use(authenticateToken);
  *         description: Expense deleted
  */
 // Management Routes (Admin & Finance)
-router.get('/invoices', authorizeRoles('ADMIN', 'FINANCE'), getInvoices);
+router.get('/invoices', authorizeRoles('ADMIN', 'FINANCE', 'STUDENT'), getInvoices);
 router.get('/invoices/:id', authorizeRoles('ADMIN', 'FINANCE', 'STUDENT'), getInvoiceById);
 router.post('/invoices', authorizeRoles('ADMIN', 'FINANCE'), createInvoice);
 router.delete('/invoices/:id', authorizeRoles('ADMIN', 'FINANCE'), deleteInvoice);
@@ -112,10 +116,25 @@ router.post('/expenses', authorizeRoles('ADMIN', 'FINANCE'), createExpense);
 router.put('/expenses/:id', authorizeRoles('ADMIN', 'FINANCE'), updateExpense);
 router.delete('/expenses/:id', authorizeRoles('ADMIN', 'FINANCE'), deleteExpense);
 
+// --- Payroll Management ---
+router.get('/payrolls', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').getPayrolls(req, res));
+router.post('/payrolls/generate', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').generatePayrolls(req, res));
+router.put('/payrolls/:id', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').updatePayrollStatus(req, res));
+
+// --- User Benefits ---
+router.get('/benefits', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').getUserBenefits(req, res));
+router.post('/benefits', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').updateUserBenefit(req, res));
+
+// --- Budgeting ---
+router.get('/budgets', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').getBudgets(req, res));
+router.get('/budgets/:id', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').getBudgetById(req, res));
+router.post('/budgets', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').createBudget(req, res));
+router.post('/budgets/items', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').addBudgetItem(req, res));
+router.post('/reminders/send', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').sendReminders(req, res));
+
 // Public/Student Financial Interaction
 router.post('/bakong-qr', authorizeRoles('ADMIN', 'FINANCE', 'STUDENT'), generatePaymentQR);
 router.get('/bakong-status/:invoiceId', authorizeRoles('ADMIN', 'FINANCE', 'STUDENT'), checkBakongStatus);
-router.post('/bakong-callback', bakongCallback); // Callback is usually semi-public or uses specific signature validation
 
 
 export default router;

@@ -1,6 +1,6 @@
 {
   "name": "school-management-backend",
-  "version": "2.0.0",
+  "version": "2.3.0",
   "description": "Backend for School Management System",
   "main": "dist/server.js",
   "scripts": {
@@ -12,7 +12,7 @@
     "seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
-    "@prisma/client": "latest",
+    "@prisma/client": "^6.3.0",
     "@types/multer": "^2.0.0",
     "bcrypt": "^6.0.0",
     "cloudinary": "^2.9.0",
@@ -35,7 +35,7 @@
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.6",
     "nodemon": "^3.0.3",
-    "prisma": "latest",
+    "prisma": "^6.3.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   }

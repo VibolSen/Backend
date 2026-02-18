@@ -13,6 +13,33 @@ enum Role {
   TEACHER
   STUDENT
   STUDY_OFFICE
+  FINANCE
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum LeaveType {
+  SICK
+  CASUAL
+  MATERNITY
+  PATERNITY
+  UNPAID
+  OTHER
+  RESIGNATION
+}
+
+enum ApplicationStatus {
+  APPLIED
+  REVIEWING
+  INTERVIEWING
+  OFFERED
+  HIRED
+  REJECTED
 }
 
 enum SubmissionStatus {
@@ -104,6 +131,10 @@ model User {
   auditLogs      AuditLog[]   @relation("ActorLogs")
   monitoredGroups Group[] @relation("GroupMonitor")
   notifications  Notification[]
+
+  // Request & Approvals
+  leaveRequests  LeaveRequest[]
+  approvedLeaves LeaveRequest[] @relation("LeaveApprover")
 }
 
 model AuditLog {
@@ -175,6 +206,8 @@ model LibraryResource {
   department      String?
   description     String?
   publicationYear Int?
+  createdAt       DateTime @default(now())
+  fileUrl         String?  // New: Store PDF/Doc link
 }
 
 model Department {
@@ -497,6 +530,31 @@ model JobApplication {
   appliedAt       DateTime     @default(now())
   jobPosting      JobPosting   @relation(fields: [jobPostingId], references: [id])
   jobPostingId    String       @db.ObjectId
+
+  // Enhanced Candidate Info
+  phone           String?
+  qualification   String?
+  experience      String?      // e.g., "5 years"
+  skills          String[]
+  status          ApplicationStatus @default(APPLIED)
+}
+
+model LeaveRequest {
+  id          String      @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String      @db.ObjectId
+  user        User        @relation(fields: [userId], references: [id])
+  type        LeaveType
+  startDate   DateTime
+  endDate     DateTime
+  reason      String?
+  status      LeaveStatus @default(PENDING)
+  rejectionReason String?
+  
+  approvedById String?    @db.ObjectId
+  approvedBy   User?      @relation("LeaveApprover", fields: [approvedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 }
 
 // Financial Management

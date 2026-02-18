@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -33,9 +34,13 @@ import certificateRoutes from './routes/certificateRoutes';
 import hrRoutes from './routes/hrRoutes';
 import careersRoutes from './routes/careersRoutes';
 import notificationRoutes from './routes/notificationRoutes';
+import leaveRoutes from './routes/leaveRoutes';
 import prisma from './prisma';
+import { startCronJobs } from './services/cronService';
 
-dotenv.config();
+
+
+// Environment variables are loaded via import 'dotenv/config' at the top
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -131,6 +136,7 @@ app.use('/api/certificates', certificateRoutes);
 app.use('/api/hr', hrRoutes);
 app.use('/api/careers', careersRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/leaves', leaveRoutes);
 app.get('/api/course-analytics', getCourseAnalytics);
 
 app.get('/', (req, res) => {
@@ -158,4 +164,8 @@ app.use((err: any, req: any, res: any, next: any) => {
 app.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`Server is running on http://localhost:${PORT}`);
   console.log(`Swagger Docs available at http://localhost:${PORT}/api-docs`);
+  
+  // Start Background Jobs
+  startCronJobs();
+  // Server updated to include Leave Management routes (restored includes)
 });

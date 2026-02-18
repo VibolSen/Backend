@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma';
+import { uploadToCloudinary } from '../middleware/upload';
 
 export const getLibraryResources = async (req: Request, res: Response) => {
   try {
@@ -8,7 +9,8 @@ export const getLibraryResources = async (req: Request, res: Response) => {
             uploadedBy: {
                 select: { firstName: true, lastName: true }
             }
-        }
+        },
+        orderBy: { createdAt: 'desc' }
     });
     res.json(resources);
   } catch (err) {
@@ -17,18 +19,46 @@ export const getLibraryResources = async (req: Request, res: Response) => {
   }
 };
 
-export const createLibraryResource = async (req: Request, res: Response) => {
+export const createLibraryResource = async (req: any, res: any) => {
   try {
-    const { title, author, coverImage, uploadedById, department, description, publicationYear } = req.body;
+    // Determine department from the uploading user
+    const uploadedById = req.body.uploadedById;
+    const user = await prisma.user.findUnique({
+        where: { id: uploadedById },
+        include: { department: true }
+    });
+    const department = user?.department?.name || null;
+
+    const { title, author, description, publicationYear } = req.body;
+    let coverImage = req.body.coverImage;
+    let fileUrl = req.body.fileUrl;
+
+    // Handle File Uploads
+    if (req.files) {
+        if (req.files['coverImage']?.[0]) {
+            const result = await uploadToCloudinary(req.files['coverImage'][0].buffer, 'school-management/library');
+            coverImage = result.secure_url;
+        }
+        if (req.files['resourceFile']?.[0]) {
+             const result = await uploadToCloudinary(req.files['resourceFile'][0].buffer, 'school-management/library-files');
+             fileUrl = result.secure_url;
+        }
+    }
+
+    if (!coverImage) {
+        return res.status(400).json({ error: "Cover image is required" });
+    }
+
     const resource = await prisma.libraryResource.create({
       data: {
         title,
         author,
         coverImage,
+        fileUrl, // Store PDF URL
         uploadedById,
         department,
         description,
-        publicationYear
+        publicationYear: publicationYear ? parseInt(String(publicationYear)) : undefined
       },
     });
     res.status(201).json(resource);
@@ -51,10 +81,24 @@ export const deleteLibraryResource = async (req: Request, res: Response) => {
   }
 };
 
-export const updateLibraryResource = async (req: Request, res: Response) => {
+export const updateLibraryResource = async (req: any, res: any) => {
   try {
     const { id } = req.params;
-    const { title, author, coverImage, department, description, publicationYear } = req.body;
+    const { title, author, description, publicationYear } = req.body;
+    let coverImage = req.body.coverImage;
+    let fileUrl = req.body.fileUrl;
+
+    // Handle File Uploads
+    if (req.files) {
+        if (req.files['coverImage']?.[0]) {
+            const result = await uploadToCloudinary(req.files['coverImage'][0].buffer, 'school-management/library');
+            coverImage = result.secure_url;
+        }
+        if (req.files['resourceFile']?.[0]) {
+             const result = await uploadToCloudinary(req.files['resourceFile'][0].buffer, 'school-management/library-files');
+             fileUrl = result.secure_url;
+        }
+    }
 
     const updatedResource = await prisma.libraryResource.update({
       where: { id: String(id) },
@@ -62,7 +106,7 @@ export const updateLibraryResource = async (req: Request, res: Response) => {
         title,
         author,
         coverImage,
-        department,
+        fileUrl: fileUrl || undefined, // Only update if new file provided
         description,
         publicationYear: publicationYear ? parseInt(String(publicationYear)) : undefined
       },

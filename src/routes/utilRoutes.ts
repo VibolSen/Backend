@@ -56,19 +56,23 @@ router.get('/roles', (req: Request, res: Response) => {
     res.json(['ADMIN', 'HR', 'TEACHER', 'STUDENT', 'STUDY_OFFICE']);
 });
 
-import { upload } from '../middleware/upload';
+import { upload, uploadToCloudinary } from '../middleware/upload';
 
 // File Upload Route
-router.post('/upload', upload.single('file'), (req: any, res: any) => {
+router.post('/upload', upload.single('file'), async (req: any, res: any) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
+    
+    // Upload buffer to Cloudinary
+    const result = await uploadToCloudinary(req.file.buffer, 'school-management/uploads');
+    
     // Return the Cloudinary URL
-    res.json({ url: req.file.path, public_id: req.file.filename });
-  } catch (err) {
+    res.json({ url: result.secure_url, public_id: result.public_id });
+  } catch (err: any) {
     console.error("Upload error:", err);
-    res.status(500).json({ error: 'Upload failed' });
+    res.status(500).json({ error: 'Upload failed', message: err.message });
   }
 });
 

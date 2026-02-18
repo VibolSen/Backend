@@ -363,9 +363,10 @@ export const generatePaymentQR = async (req: Request, res: Response) => {
              finalAmount = Math.ceil(finalAmount * 4100); 
         }
         
-        // Critical Fix: Use the FULL invoiceId as the billNumber so the callback can find it.
-        // Bakong billNumber limit is 25 chars. MongoDB ObjectId is 24 chars.
-        const validBillNumber = invoiceId;
+        // IMPORTANT: KHQR Subtag 62.01 (Bill Number) has a strict length limit (usually 15 chars).
+        // MongoDB ID (24 chars) is TOO LONG. We use the last 12 chars which is unique enough.
+        const shortId = invoiceId.substring(invoiceId.length - 12);
+        const validBillNumber = shortId;
 
         const payload = {
             tag: TAG.INDIVIDUAL,
@@ -377,7 +378,7 @@ export const generatePaymentQR = async (req: Request, res: Response) => {
             countryCode: COUNTRY.KH,
             expirationTimestamp: Date.now() + 15 * 60 * 1000,
             additionalData: {
-                billNumber: validBillNumber // Use full ID here
+                billNumber: validBillNumber // Max 15-20 chars for most banks
             }
         };
 
@@ -421,29 +422,36 @@ export const bakongCallback = async (req: Request, res: Response) => {
     try {
         const { invoiceId, billNumber, amount, transactionId, md5, senderAccount, senderName } = req.body;
         
-        // Identify the actual invoice ID (try invoiceId first, then billNumber)
+        // Identify the actual invoice ID
         let targetInvoiceId = invoiceId || billNumber;
         
-        // If billNumber has a prefix like "INV-", strip it
-        if (targetInvoiceId && typeof targetInvoiceId === 'string' && targetInvoiceId.startsWith("INV-")) {
-            targetInvoiceId = targetInvoiceId.replace("INV-", "");
+        if (!targetInvoiceId) {
+            console.error("No invoice identifier in callback");
+            return res.status(400).json({ error: "Missing invoice identifier" });
         }
 
-        console.log("Processing Bakong Callback:", { targetInvoiceId, amount, transactionId });
+        console.log("Bakong Callback Inbound:", { targetInvoiceId, amount, transactionId });
 
-        if (!targetInvoiceId || targetInvoiceId.length !== 24) {
-            console.error("Invalid Invoice ID received:", targetInvoiceId);
-            return res.status(400).json({ error: "Invalid Invoice ID" });
+        // Lookup: If it's a short ID (12 chars), find by suffix. If 24, find direct.
+        let invoice;
+        if (targetInvoiceId.length === 24) {
+            invoice = await prisma.invoice.findUnique({
+                where: { id: targetInvoiceId },
+                include: { payments: true }
+            });
+        } else {
+            // Find invoice where ID ends with this shortId
+            // In Prisma/MongoDB, we might need a raw query or fetch multiple
+            const allInvoices = await prisma.invoice.findMany({
+                where: { id: { endsWith: targetInvoiceId } },
+                include: { payments: true }
+            });
+            invoice = allInvoices[0];
         }
-
-        // 1. Find the invoice
-        const invoice = await prisma.invoice.findUnique({
-            where: { id: targetInvoiceId },
-            include: { payments: true }
-        });
 
         if (!invoice) {
-            return res.status(404).json({ error: "Invoice not found in system" });
+            console.error("Invoice not found for ID:", targetInvoiceId);
+            return res.status(404).json({ error: "Invoice not found" });
         }
 
         // 2. Create the payment
@@ -457,32 +465,23 @@ export const bakongCallback = async (req: Request, res: Response) => {
                 senderAccount: senderAccount || "N/A",
                 senderName: senderName || "BAKONG_USER",
                 receiverAccount: process.env.KHQR_ACCOUNT_ID || "ishinvin@devb",
-                notes: `Automatic detection via Bakong (MD5: ${md5 || 'N/A'})`
+                notes: `Bakong Notification (MD5: ${md5 || 'N/A'})`
             }
         });
 
-        // 3. Update Status (Use a small epsilon for float comparison)
+        // 3. Update Status
         const totalPaid = invoice.payments.reduce((sum: number, p) => sum + p.amount, 0) + Number(amount);
         if (totalPaid >= (invoice.totalAmount - 0.01)) {
             await prisma.invoice.update({
                 where: { id: invoice.id },
                 data: { status: "PAID" }
             });
-            console.log(`Invoice ${invoice.id} marked as PAID`);
-        } else {
-            // If it was DRAFT, at least move it to SENT if a partial payment is made
-            if (invoice.status === "DRAFT") {
-                await prisma.invoice.update({
-                    where: { id: invoice.id },
-                    data: { status: "SENT" }
-                });
-            }
         }
 
-        res.json({ success: true, message: "Payment recorded successfully" });
+        res.json({ success: true, message: "OK" });
     } catch (err) {
-        console.error("Callback error:", err);
-        res.status(500).json({ error: "Internal Server Error during callback processing" });
+        console.error("Callback crash:", err);
+        res.status(500).json({ error: "Internal Error" });
     }
 };
 

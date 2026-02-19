@@ -622,7 +622,9 @@ model Payment {
   transactionId String?
   senderAccount String?   // To record Bakong ID / Bank Account
   senderName    String?   // To record the person who paid
-  receiverAccount String? // New: To record school merchant account received
+  receiverAccount String? // To record school merchant account received
+  currency      String?   // USD or KHR
+  md5           String?   // Security Hash from Bank
   notes         String?
   createdAt     DateTime      @default(now())
 }

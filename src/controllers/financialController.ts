@@ -459,13 +459,15 @@ export const bakongCallback = async (req: Request, res: Response) => {
             data: {
                 invoiceId: invoice.id,
                 amount: Number(amount),
+                currency: req.body.currency || "USD", 
+                md5: md5 || "N/A",
                 paymentDate: new Date(),
                 paymentMethod: "BANK_TRANSFER",
                 transactionId: transactionId || `BK-${Date.now()}`,
                 senderAccount: senderAccount || "N/A",
                 senderName: senderName || "BAKONG_USER",
-                receiverAccount: process.env.KHQR_ACCOUNT_ID || "ishinvin@devb",
-                notes: `Bakong Notification (MD5: ${md5 || 'N/A'})`
+                receiverAccount: process.env.KHQR_ACCOUNT_ID || "vibol_sen@bkrt",
+                notes: `Bakong Notification Received`
             }
         });
 

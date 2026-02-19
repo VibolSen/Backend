@@ -401,7 +401,9 @@ export const generatePaymentQR = async (req: Request, res: Response) => {
 export const checkBakongStatus = async (req: Request, res: Response) => {
     try {
         const { invoiceId } = req.params;
-        const { md5 } = req.query; // The frontend should send the MD5 of the QR it is showing
+        const { md5 } = req.query; 
+
+        console.log(`[Status Check] Polling Invoice: ${invoiceId} | MD5: ${md5 || 'Missing'}`);
 
         const invoice = await prisma.invoice.findUnique({
             where: { id: String(invoiceId) },
@@ -418,48 +420,54 @@ export const checkBakongStatus = async (req: Request, res: Response) => {
         // 2. If we have an MD5, check the REAL Bakong API
         if (md5 && process.env.BAKONG_API_TOKEN) {
             try {
-                const bakongResponse = await fetch(`${process.env.BAKONG_API_URL || 'https://api-bakong.nbc.gov.kh/v1'}/check_transaction_by_md5`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${process.env.BAKONG_API_TOKEN}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ md5 })
-                });
+                // Feature Check: Support older Node.js without native fetch
+                if (typeof fetch === 'undefined') {
+                    console.warn(" WARNING: native fetch not available. Skipping real-time Bakong check.");
+                } else {
+                    const bakongResponse = await fetch(`${process.env.BAKONG_API_URL || 'https://api-bakong.nbc.gov.kh/v1'}/check_transaction_by_md5`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${process.env.BAKONG_API_TOKEN}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ md5 })
+                    });
 
-                const data = await bakongResponse.json();
-                
-                // If Bakong confirms the payment is successful
-                if (data.responseCode === 0 && data.data && data.data.status === "SUCCESS") {
-                    const txData = data.data;
+                    const data = await bakongResponse.json();
                     
-                    // Create the payment record in our DB
-                    await (prisma as any).payment.create({
-                        data: {
-                            invoiceId: invoice.id,
-                            amount: Number(txData.amount),
-                            currency: txData.currency || "USD",
-                            md5: String(md5),
-                            paymentDate: new Date(),
-                            paymentMethod: "BANK_TRANSFER",
-                            transactionId: txData.hash || txData.externalRef || `NB-${Date.now()}`,
-                            senderAccount: txData.senderAccount || "N/A",
-                            senderName: txData.senderName || "BAKONG_USER",
-                            receiverAccount: process.env.KHQR_ACCOUNT_ID || "vibol_sen@bkrt",
-                            notes: `Verified via Bakong Open API`
-                        }
-                    });
+                    // If Bakong confirms the payment is successful
+                    if (data.responseCode === 0 && data.data && data.data.status === "SUCCESS") {
+                        const txData = data.data;
+                        console.log(` ✅ Bank Verified via MD5: ${md5}`);
+                        
+                        // Create the payment record in our DB
+                        await (prisma as any).payment.create({
+                            data: {
+                                invoiceId: invoice.id,
+                                amount: Number(txData.amount),
+                                currency: txData.currency || "USD",
+                                md5: String(md5),
+                                paymentDate: new Date(),
+                                paymentMethod: "BANK_TRANSFER",
+                                transactionId: txData.hash || txData.externalRef || `NB-${Date.now()}`,
+                                senderAccount: txData.senderAccount || "N/A",
+                                senderName: txData.senderName || "BAKONG_USER",
+                                receiverAccount: process.env.KHQR_ACCOUNT_ID || "vibol_sen@bkrt",
+                                notes: `Verified via Bakong Open API`
+                            }
+                        });
 
-                    // Update Invoice to PAID
-                    await prisma.invoice.update({
-                        where: { id: invoice.id },
-                        data: { status: "PAID" }
-                    });
+                        // Update Invoice to PAID
+                        await prisma.invoice.update({
+                            where: { id: invoice.id },
+                            data: { status: "PAID" }
+                        });
 
-                    return res.json({ status: "PAID", isPaid: true });
+                        return res.json({ status: "PAID", isPaid: true });
+                    }
                 }
             } catch (apiErr) {
-                console.error("Bakong API Communication Error:", apiErr);
+                console.error(" ❌ Bakong API Error:", apiErr);
             }
         }
 
@@ -477,19 +485,19 @@ export const checkBakongStatus = async (req: Request, res: Response) => {
 
 export const bakongCallback = async (req: Request, res: Response) => {
     try {
-        console.log("FULL Bakong Callback Payload:", JSON.stringify(req.body, null, 2));
+        console.log(" Bakong Callback Inbound Payload:", JSON.stringify(req.body, null, 2));
         
-        const { invoiceId, billNumber, billNo, externalRef, amount, transactionId, md5, senderAccount, senderName } = req.body;
+        const { invoiceId, billNumber, billNo, externalRef, amount, transactionId, md5, senderAccount, senderName, currency } = req.body;
         
         // Identify the actual invoice ID - Check all common bank field names
         let targetInvoiceId = invoiceId || billNumber || billNo || externalRef;
         
         if (!targetInvoiceId) {
-            console.error("No invoice identifier in callback");
+            console.error(" Error: No invoice identifier in callback");
             return res.status(400).json({ error: "Missing invoice identifier" });
         }
 
-        console.log("Bakong Callback Inbound:", { targetInvoiceId, amount, transactionId });
+        console.log(" ✅ Processing Bakong Callback for Invoice:", targetInvoiceId);
 
         // Lookup: If it's a short ID (12 chars), find by suffix. If 24, find direct.
         let invoice;
@@ -531,14 +539,23 @@ export const bakongCallback = async (req: Request, res: Response) => {
         });
 
         // 3. Update Status
-        const totalPaid = invoice.payments.reduce((sum: number, p) => sum + p.amount, 0) + Number(amount);
+        const currentInvoices = await prisma.invoice.findUnique({
+            where: { id: invoice.id },
+            include: { payments: true }
+        });
+
+        const totalPaid = (currentInvoices?.payments || []).reduce((sum: number, p: any) => sum + p.amount, 0);
+        
         if (totalPaid >= (invoice.totalAmount - 0.01)) {
             await prisma.invoice.update({
                 where: { id: invoice.id },
                 data: { status: "PAID" }
             });
+            console.log(` SUCCESS: Invoice ${invoice.id} marked as PAID`);
+        } else {
+            console.log(` INFO: Partial payment for ${invoice.id}, Total Paid: ${totalPaid}`);
         }
-
+        
         res.json({ success: true, message: "OK" });
     } catch (err) {
         console.error("Callback crash:", err);

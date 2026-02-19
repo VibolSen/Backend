@@ -401,6 +401,8 @@ export const generatePaymentQR = async (req: Request, res: Response) => {
 export const checkBakongStatus = async (req: Request, res: Response) => {
     try {
         const { invoiceId } = req.params;
+        const { md5 } = req.query; // The frontend should send the MD5 of the QR it is showing
+
         const invoice = await prisma.invoice.findUnique({
             where: { id: String(invoiceId) },
             include: { payments: true }
@@ -408,22 +410,79 @@ export const checkBakongStatus = async (req: Request, res: Response) => {
 
         if (!invoice) return res.status(404).json({ error: "Invoice not found" });
 
+        // 1. If already paid in our DB, return success immediately
+        if (invoice.status === "PAID") {
+            return res.json({ status: "PAID", isPaid: true });
+        }
+
+        // 2. If we have an MD5, check the REAL Bakong API
+        if (md5 && process.env.BAKONG_API_TOKEN) {
+            try {
+                const bakongResponse = await fetch(`${process.env.BAKONG_API_URL || 'https://api-bakong.nbc.gov.kh/v1'}/check_transaction_by_md5`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${process.env.BAKONG_API_TOKEN}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ md5 })
+                });
+
+                const data = await bakongResponse.json();
+                
+                // If Bakong confirms the payment is successful
+                if (data.responseCode === 0 && data.data && data.data.status === "SUCCESS") {
+                    const txData = data.data;
+                    
+                    // Create the payment record in our DB
+                    await (prisma as any).payment.create({
+                        data: {
+                            invoiceId: invoice.id,
+                            amount: Number(txData.amount),
+                            currency: txData.currency || "USD",
+                            md5: String(md5),
+                            paymentDate: new Date(),
+                            paymentMethod: "BANK_TRANSFER",
+                            transactionId: txData.hash || txData.externalRef || `NB-${Date.now()}`,
+                            senderAccount: txData.senderAccount || "N/A",
+                            senderName: txData.senderName || "BAKONG_USER",
+                            receiverAccount: process.env.KHQR_ACCOUNT_ID || "vibol_sen@bkrt",
+                            notes: `Verified via Bakong Open API`
+                        }
+                    });
+
+                    // Update Invoice to PAID
+                    await prisma.invoice.update({
+                        where: { id: invoice.id },
+                        data: { status: "PAID" }
+                    });
+
+                    return res.json({ status: "PAID", isPaid: true });
+                }
+            } catch (apiErr) {
+                console.error("Bakong API Communication Error:", apiErr);
+            }
+        }
+
+        // 3. Otherwise return current local status
         res.json({
             status: invoice.status,
-            isPaid: invoice.status === "PAID",
+            isPaid: false,
             totalPaid: invoice.payments.reduce((sum: number, p) => sum + p.amount, 0)
         });
     } catch (err) {
+        console.error("Status Check Error:", err);
         res.status(500).json({ error: "Failed to check status" });
     }
 };
 
 export const bakongCallback = async (req: Request, res: Response) => {
     try {
-        const { invoiceId, billNumber, amount, transactionId, md5, senderAccount, senderName } = req.body;
+        console.log("FULL Bakong Callback Payload:", JSON.stringify(req.body, null, 2));
         
-        // Identify the actual invoice ID
-        let targetInvoiceId = invoiceId || billNumber;
+        const { invoiceId, billNumber, billNo, externalRef, amount, transactionId, md5, senderAccount, senderName } = req.body;
+        
+        // Identify the actual invoice ID - Check all common bank field names
+        let targetInvoiceId = invoiceId || billNumber || billNo || externalRef;
         
         if (!targetInvoiceId) {
             console.error("No invoice identifier in callback");

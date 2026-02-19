@@ -53,6 +53,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Custom Request Logger Middleware
 app.use((req, res, next) => {

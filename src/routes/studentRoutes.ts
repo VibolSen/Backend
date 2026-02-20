@@ -75,12 +75,6 @@ router.get('/my-exams', getStudentExams);
  *     responses:
  *       200:
  *         description: List of students
- */
-router.get('/', getStudents);
-
-/**
- * @swagger
- * /api/students:
  *   post:
  *     summary: Create a new student
  *     tags: [Students]
@@ -93,11 +87,7 @@ router.get('/', getStudents);
  *     responses:
  *       201:
  *         description: Student created
- */
-router.post('/', createStudent);
-
-/**
- * @swagger
+ *
  * /api/students/{id}:
  *   put:
  *     summary: Update a student
@@ -117,12 +107,6 @@ router.post('/', createStudent);
  *     responses:
  *       200:
  *         description: Student updated
- */
-router.put('/:id', updateStudent);
-
-/**
- * @swagger
- * /api/students/{id}:
  *   delete:
  *     summary: Delete a student
  *     tags: [Students]
@@ -136,6 +120,9 @@ router.put('/:id', updateStudent);
  *       200:
  *         description: Student deleted
  */
+router.get('/', getStudents);
+router.post('/', createStudent);
+router.put('/:id', updateStudent);
 router.delete('/:id', deleteStudent);
 
 export default router;

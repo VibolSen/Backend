@@ -19,18 +19,6 @@ const router = Router();
  *     responses:
  *       200:
  *         description: List of teachers
- */
-router.get('/my-courses', getTeacherCourses);
-router.get('/my-students', getMyStudents);
-router.get('/my-groups', getMyGroups);
-router.get('/groups/:groupId/students', getGroupStudents);
-router.get('/groups/:groupId/attendance', getGroupAttendance);
-router.post('/groups/:groupId/attendance', submitGroupAttendance);
-router.get('/', getTeachers);
-
-/**
- * @swagger
- * /api/teachers:
  *   post:
  *     summary: Create a new teacher
  *     tags: [Teachers]
@@ -57,11 +45,7 @@ router.get('/', getTeachers);
  *     responses:
  *       201:
  *         description: Teacher created
- */
-router.post('/', createTeacher);
-
-/**
- * @swagger
+ *
  * /api/teachers/{id}:
  *   get:
  *     summary: Get a teacher by ID
@@ -75,12 +59,6 @@ router.post('/', createTeacher);
  *     responses:
  *       200:
  *         description: Teacher details
- */
-router.get('/:id', getTeacherById);
-
-/**
- * @swagger
- * /api/teachers/{id}:
  *   put:
  *     summary: Update a teacher
  *     tags: [Teachers]
@@ -99,12 +77,6 @@ router.get('/:id', getTeacherById);
  *     responses:
  *       200:
  *         description: Teacher updated
- */
-router.put('/:id', updateTeacher);
-
-/**
- * @swagger
- * /api/teachers/{id}:
  *   delete:
  *     summary: Delete a teacher
  *     tags: [Teachers]
@@ -118,6 +90,16 @@ router.put('/:id', updateTeacher);
  *       200:
  *         description: Teacher deleted
  */
+router.get('/my-courses', getTeacherCourses);
+router.get('/my-students', getMyStudents);
+router.get('/my-groups', getMyGroups);
+router.get('/groups/:groupId/students', getGroupStudents);
+router.get('/groups/:groupId/attendance', getGroupAttendance);
+router.post('/groups/:groupId/attendance', submitGroupAttendance);
+router.get('/', getTeachers);
+router.post('/', createTeacher);
+router.get('/:id', getTeacherById);
+router.put('/:id', updateTeacher);
 router.delete('/:id', deleteTeacher);
 
 export default router;

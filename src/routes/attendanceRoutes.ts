@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getAttendance, checkIn, checkOut, manualUpdate, getStaffStats, bulkFetchAttendance } from '../controllers/attendanceController';
+import { getAttendance, checkIn, checkOut, manualUpdate, getStaffStats, bulkFetchAttendance, getSessionAttendance, submitSessionAttendance } from '../controllers/attendanceController';
 
 const router = Router();
 
@@ -18,6 +18,37 @@ const router = Router();
  *     responses:
  *       200:
  *         description: List of attendance records
+ *
+ * /api/attendance/session:
+ *   get:
+ *     summary: Get session attendance for a course
+ *     tags: [Attendance]
+ *     parameters:
+ *       - in: query
+ *         name: courseId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: date
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of attendance records
+ *   post:
+ *     summary: Submit session attendance
+ *     tags: [Attendance]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Attendance saved
  *
  * /api/attendance/stats:
  *   get:
@@ -70,6 +101,8 @@ const router = Router();
  *         description: Attendance updated manually
  */
 router.get('/', getAttendance);
+router.get('/session', getSessionAttendance);
+router.post('/session', submitSessionAttendance);
 router.get('/stats', getStaffStats);
 router.post('/check-in', checkIn);
 router.post('/check-out', checkOut);

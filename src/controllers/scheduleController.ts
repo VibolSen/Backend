@@ -5,7 +5,7 @@ import prisma from '../prisma';
  * Helper to check for scheduling conflicts
  */
 const checkConflicts = async (data: any, excludeScheduleId?: string) => {
-    const { assignedToTeacherId, assignedToGroupId, location, sessions, daysOfWeek, isRecurring, startDate, endDate } = data;
+    const { assignedToTeacherId, assignedToGroupId, location, roomId, sessions, daysOfWeek, isRecurring, startDate, endDate } = data;
     
     // 1. Fetch all potential conflicting schedules
     const existingSchedules = await (prisma.schedule as any).findMany({
@@ -14,7 +14,8 @@ const checkConflicts = async (data: any, excludeScheduleId?: string) => {
             OR: [
                 { assignedToTeacherId: assignedToTeacherId || undefined },
                 { assignedToGroupId: assignedToGroupId || undefined },
-                { location: (location && location.trim() !== "") ? location : undefined }
+                { location: (location && location.trim() !== "") ? location : undefined },
+                { roomId: roomId || undefined }
             ]
         },
         include: { sessions: true }
@@ -41,7 +42,8 @@ const checkConflicts = async (data: any, excludeScheduleId?: string) => {
                     let reason = "";
                     if (existing.assignedToTeacherId === assignedToTeacherId) reason = "Teacher is already busy";
                     if (existing.assignedToGroupId === assignedToGroupId) reason = "Group already has a class";
-                    if (existing.location === location) reason = `Location ${location} is already booked`;
+                    if (existing.roomId === roomId) reason = "Room is already booked";
+                    if (existing.location === location && !reason) reason = `Location ${location} is already booked`;
                     
                     return { conflict: true, reason: `${reason} at ${eStart}-${eEnd} (${existing.title})` };
                 }
@@ -100,6 +102,7 @@ export const createSchedule = async (req: Request, res: Response) => {
         assignedToGroupId,
         courseId,
         location,
+        roomId,
         sessions 
     } = req.body;
 
@@ -115,6 +118,13 @@ export const createSchedule = async (req: Request, res: Response) => {
         return;
     }
 
+    // Determine location string
+    let locationString = location;
+    if (roomId) {
+        const room = await (prisma as any).room.findUnique({ where: { id: roomId } });
+        if (room) locationString = room.name;
+    }
+
     const newSchedule = await (prisma.schedule as any).create({
       data: {
         title,
@@ -126,7 +136,8 @@ export const createSchedule = async (req: Request, res: Response) => {
         assignedToTeacherId,
         assignedToGroupId,
         courseId,
-        location,
+        location: locationString,
+        roomId,
         sessions: {
             create: (sessions || []).map((s: any) => ({
                 startTime: new Date(`${startDate || new Date().toISOString().split('T')[0]}T${s.startTime}:00`),
@@ -159,6 +170,7 @@ export const updateSchedule = async (req: Request, res: Response) => {
         assignedToGroupId,
         courseId,
         location,
+        roomId,
         sessions 
     } = req.body;
 
@@ -167,6 +179,13 @@ export const updateSchedule = async (req: Request, res: Response) => {
     if (conflictResult.conflict) {
         res.status(409).json({ error: conflictResult.reason });
         return;
+    }
+
+    // Determine location string
+    let locationString = location;
+    if (roomId) {
+        const room = await (prisma as any).room.findUnique({ where: { id: roomId } });
+        if (room) locationString = room.name;
     }
 
     // Delete existing sessions and recreate them for the update
@@ -186,7 +205,8 @@ export const updateSchedule = async (req: Request, res: Response) => {
         assignedToTeacherId,
         assignedToGroupId,
         courseId,
-        location,
+        location: locationString,
+        roomId,
         sessions: {
             create: (sessions || []).map((s: any) => ({
                 startTime: new Date(`${startDate || new Date().toISOString().split('T')[0]}T${s.startTime}:00`),

@@ -99,6 +99,8 @@ router.use(authenticateToken);
 router.get('/invoices', authorizeRoles('ADMIN', 'FINANCE', 'STUDENT'), getInvoices);
 router.get('/invoices/:id', authorizeRoles('ADMIN', 'FINANCE', 'STUDENT'), getInvoiceById);
 router.post('/invoices', authorizeRoles('ADMIN', 'FINANCE'), createInvoice);
+router.put('/invoices/:id', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').updateInvoice(req, res));
+router.get('/invoices/:id/logs', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').getInvoiceLogs(req, res));
 router.delete('/invoices/:id', authorizeRoles('ADMIN', 'FINANCE'), deleteInvoice);
 
 router.get('/fees', authorizeRoles('ADMIN', 'FINANCE', 'STUDENT'), getFees);

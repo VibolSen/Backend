@@ -3,7 +3,18 @@ import prisma from '../prisma';
 
 export const getCourses = async (req: Request, res: Response) => {
   try {
+    const { teacherId } = req.query;
+    const whereClause: any = {};
+    if (teacherId) {
+      whereClause.OR = [
+        { leadById: String(teacherId) },
+        { schedules: { some: { assignedToTeacherId: String(teacherId) } } },
+        { groups: { some: { studentIds: { has: String(teacherId) } } } }
+      ];
+    }
+
     const courses = await prisma.course.findMany({
+      where: whereClause,
       include: {
         leadBy: {
             select: {
@@ -32,9 +43,65 @@ export const getCourses = async (req: Request, res: Response) => {
   }
 };
 
+export const getCourseStudents = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (!id || id === 'undefined' || id.length !== 24) {
+      return res.status(400).json({ error: "Invalid Course ID format" });
+    }
+    
+    // Get students from both explicit enrollments AND groups assigned to this course
+    const course = await prisma.course.findUnique({
+      where: { id: String(id) },
+      include: {
+        enrollments: {
+          include: {
+            student: {
+              select: { id: true, firstName: true, lastName: true, email: true, role: true }
+            }
+          }
+        },
+        groups: {
+          include: {
+            students: {
+              select: { id: true, firstName: true, lastName: true, email: true, role: true }
+            }
+          }
+        }
+      }
+    });
+
+    if (!course) {
+      return res.status(404).json({ error: "Course not found" });
+    }
+
+    // Deduplicate students
+    const studentMap = new Map();
+    course.enrollments.forEach(e => {
+      if (e.student) studentMap.set(e.student.id, e.student);
+    });
+    course.groups.forEach(g => {
+      g.students.forEach(s => {
+        studentMap.set(s.id, s);
+      });
+    });
+
+    res.json(Array.from(studentMap.values()));
+  } catch (err) {
+    console.error("Failed to fetch course students:", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
 export const getCourseById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    
+    if (!id || id === 'undefined' || id.length !== 24) {
+      return res.status(400).json({ error: "Invalid Course ID format" });
+    }
+
     const course = await prisma.course.findUnique({
       where: { id: String(id) },
       include: {
@@ -79,6 +146,7 @@ export const createCourse = async (req: Request, res: Response) => {
       return;
     }
 
+    // ... code to create course ...
     const newCourse = await prisma.course.create({
       data: {
         name,
@@ -99,7 +167,11 @@ export const createCourse = async (req: Request, res: Response) => {
     }
 
     res.status(201).json(newCourse);
-  } catch (error) {
+  } catch (error: any) {
+    if (error.code === 'P2002' && error.meta?.target === 'Course_code_key') {
+        res.status(409).json({ error: `Course code '${req.body.code}' already exists.` });
+        return;
+    }
     console.error("Error creating course:", error);
     res.status(500).json({ error: "Failed to create course" });
   }

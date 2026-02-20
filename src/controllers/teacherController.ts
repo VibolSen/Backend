@@ -34,9 +34,17 @@ export const getTeacherCourses = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Teacher ID is required' });
     }
 
+    // Find courses where:
+    // 1. Teacher is lead
+    // 2. Teacher is assigned via a schedule
+    // 3. Teacher is a member of a group that is taking the course
     const courses = await prisma.course.findMany({
       where: {
-        leadById: String(teacherId),
+        OR: [
+          { leadById: String(teacherId) },
+          { schedules: { some: { assignedToTeacherId: String(teacherId) } } },
+          { groups: { some: { studentIds: { has: String(teacherId) } } } }
+        ]
       },
       include: {
         courseDepartments: {
@@ -209,63 +217,76 @@ export const getMyStudents = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Teacher ID is required" });
     }
 
-    // Find all courses led by this teacher
-    const courses = await prisma.course.findMany({
-      where: {
-        leadById: String(teacherId),
-      },
+    const teacherIdStr = String(teacherId);
+
+    // 1. Find all courses led by this teacher
+    const ledCourses = await prisma.course.findMany({
+      where: { leadById: teacherIdStr },
       include: {
-        // Include students from direct enrollments
         enrollments: {
           include: {
             student: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-                role: true,
-              },
+              select: { id: true, firstName: true, lastName: true, email: true, role: true },
             },
           },
         },
-        // Include students from groups
         groups: {
           include: {
             students: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-                role: true,
-              },
+              select: { id: true, firstName: true, lastName: true, email: true, role: true },
             },
           },
         },
       },
     });
 
-    // Use a Map to get unique students across multiple courses and sources
+    // 2. Find groups where the teacher is the monitor
+    const monitoredGroups = await prisma.group.findMany({
+      where: { monitorId: teacherIdStr },
+      include: {
+        students: {
+          select: { id: true, firstName: true, lastName: true, email: true, role: true },
+        },
+      },
+    });
+
+    // 3. Find groups assigned to this teacher in the schedule
+    const scheduledSchedules = await prisma.schedule.findMany({
+      where: { assignedToTeacherId: teacherIdStr },
+      include: {
+        assignedToGroup: {
+          include: {
+            students: {
+              select: { id: true, firstName: true, lastName: true, email: true, role: true },
+            },
+          },
+        },
+      },
+    });
+
+    // Use a Map to get unique students
     const studentMap = new Map();
     
-    courses.forEach((course) => {
-      // Add students from enrollments
+    // Add students from led courses
+    ledCourses.forEach((course) => {
       course.enrollments.forEach((enrollment) => {
-        const student = enrollment.student;
-        if (student && !studentMap.has(student.id)) {
-          studentMap.set(student.id, student);
-        }
+        if (enrollment.student) studentMap.set(enrollment.student.id, enrollment.student);
       });
-
-      // Add students from groups
       course.groups.forEach((group) => {
-        group.students.forEach((student) => {
-          if (student && !studentMap.has(student.id)) {
-            studentMap.set(student.id, student);
-          }
-        });
+        group.students.forEach((s) => studentMap.set(s.id, s));
       });
+    });
+
+    // Add students from monitored groups
+    monitoredGroups.forEach((group) => {
+      group.students.forEach((s) => studentMap.set(s.id, s));
+    });
+
+    // Add students from schedules
+    scheduledSchedules.forEach((schedule) => {
+      if (schedule.assignedToGroup) {
+        schedule.assignedToGroup.students.forEach((s) => studentMap.set(s.id, s));
+      }
     });
 
     const students = Array.from(studentMap.values());
@@ -284,8 +305,8 @@ export const getMyGroups = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Teacher ID is required" });
     }
 
-    // Find all courses led by this teacher and their associated groups
-    const courses = await prisma.course.findMany({
+    // 1. Find all courses led by this teacher and their associated groups
+    const ledCourses = await prisma.course.findMany({
       where: {
         leadById: String(teacherId),
       },
@@ -299,14 +320,58 @@ export const getMyGroups = async (req: Request, res: Response) => {
       },
     });
 
+    // 2. Find groups where the teacher is explicitly added to the group's student/user list (common in some systems)
+    const userGroups = await prisma.group.findMany({
+      where: {
+        studentIds: {
+          has: String(teacherId)
+        }
+      },
+      select: {
+        id: true,
+        name: true
+      }
+    });
+
+    // 3. Find groups from schedules assigned to this teacher
+    const scheduledSchedules = await prisma.schedule.findMany({
+      where: {
+        assignedToTeacherId: String(teacherId)
+      },
+      include: {
+        assignedToGroup: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      }
+    });
+
     // Flatten and deduplicate groups
     const groupMap = new Map();
-    courses.forEach((course) => {
+    
+    // Add groups from led courses
+    ledCourses.forEach((course) => {
       course.groups.forEach((group) => {
         if (!groupMap.has(group.id)) {
           groupMap.set(group.id, group);
         }
       });
+    });
+
+    // Add groups where user is a member
+    userGroups.forEach((group) => {
+      if (!groupMap.has(group.id)) {
+        groupMap.set(group.id, group);
+      }
+    });
+
+    // Add groups from schedules
+    scheduledSchedules.forEach((schedule) => {
+      if (schedule.assignedToGroup && !groupMap.has(schedule.assignedToGroup.id)) {
+        groupMap.set(schedule.assignedToGroup.id, schedule.assignedToGroup);
+      }
     });
 
     const groups = Array.from(groupMap.values());

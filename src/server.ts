@@ -22,10 +22,15 @@ import announcementRoutes from './routes/announcementRoutes';
 import financialRoutes from './routes/financialRoutes';
 import careerRoutes from './routes/careerRoutes';
 import authRoutes from './routes/authRoutes';
+import roomRoutes from './routes/roomRoutes';
 import userRoutes from './routes/userRoutes';
+// ... (other imports)
+
+// ... (other imports)
+// ... (other imports)
+import { getMe } from './controllers/authController';
 import enrollmentRoutes from './routes/enrollmentRoutes';
 import { authenticateToken } from './middleware/auth';
-import { getMe } from './controllers/authController';
 import dashboardRoutes from './routes/dashboardRoutes';
 import profileRoutes from './routes/profileRoutes'; // Added this
 import examSubmissionRoutes from './routes/examSubmissionRoutes';
@@ -102,8 +107,8 @@ app.use('/api/career', careerRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
-app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/dashboards', dashboardRoutes);
+app.use('/api/rooms', roomRoutes);
 app.use('/api/profile', profileRoutes);
 
 // Direct routes for /api/me (avoids double-namespace issue)

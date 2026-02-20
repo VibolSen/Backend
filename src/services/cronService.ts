@@ -10,8 +10,7 @@ export const cleanOldNotifications = async () => {
             where: {
                 createdAt: {
                     lt: oneWeekAgo
-                },
-                isRead: true // Only delete if read? Or delete all? Usually better to delete ALL old ones to save space.
+                }
             }
         });
 

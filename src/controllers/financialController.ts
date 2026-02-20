@@ -56,9 +56,10 @@ export const getInvoiceById = async (req: Request, res: Response) => {
     }
 };
 
-export const createInvoice = async (req: Request, res: Response) => {
+export const createInvoice = async (req: any, res: Response) => {
   try {
     const { studentId, issueDate, dueDate, totalAmount, items } = req.body;
+    const actorId = req.user.userId;
     
     // Validate items structure
     const formattedItems = items.map((item: any) => ({
@@ -77,15 +78,39 @@ export const createInvoice = async (req: Request, res: Response) => {
         student: { connect: { id: studentId } },
         issueDate: new Date(issueDate),
         dueDate: new Date(dueDate),
-        totalAmount: calculatedTotal, // Use calculated total
+        totalAmount: calculatedTotal, 
         items: {
           create: formattedItems
         }
       },
       include: {
-        items: true
+        items: true,
+        student: true
       }
     });
+
+    // --- 1. Audit Trail Logging ---
+    await prisma.auditLog.create({
+        data: {
+            action: "INVOICE_CREATED",
+            actorId: actorId,
+            target: "INVOICE",
+            targetId: invoice.id,
+            details: `Created new invoice for $${calculatedTotal} with ${formattedItems.length} items.`
+        }
+    });
+
+    // --- 2. Student Notification ---
+    await prisma.notification.create({
+        data: {
+            userId: studentId,
+            title: "📜 New Invoice Issued",
+            message: `A new invoice for $${calculatedTotal} has been issued for your account. Please settle by ${new Date(dueDate).toLocaleDateString()}.`,
+            type: "PAYMENT",
+            link: `/student/invoices/${invoice.id}`
+        }
+    });
+
     res.status(201).json(invoice);
   } catch (err: any) {
     console.error("Failed to create invoice:", err);
@@ -93,10 +118,77 @@ export const createInvoice = async (req: Request, res: Response) => {
   }
 };
 
-export const deleteInvoice = async (req: Request, res: Response) => {
+export const updateInvoice = async (req: any, res: Response) => {
     try {
         const { id } = req.params;
-        const invoiceId = String(id); // Cast id to string
+        const { studentId, issueDate, dueDate, items } = req.body;
+        const actorId = req.user.userId;
+
+        // 1. Delete existing items
+        await prisma.invoiceItem.deleteMany({ where: { invoiceId: id } });
+
+        // 2. Format new items
+        const formattedItems = items.map((item: any) => ({
+            description: item.description,
+            amount: Number(item.amount),
+            feeId: item.feeId
+        }));
+
+        const calculatedTotal = formattedItems.reduce((acc: number, item: any) => acc + item.amount, 0);
+
+        // 3. Update Invoice
+        const updatedInvoice = await prisma.invoice.update({
+            where: { id: String(id) },
+            data: {
+                studentId,
+                issueDate: new Date(issueDate),
+                dueDate: new Date(dueDate),
+                totalAmount: calculatedTotal,
+                items: {
+                    create: formattedItems
+                }
+            },
+            include: { items: true }
+        });
+
+        // 4. Audit Trail
+        await prisma.auditLog.create({
+            data: {
+                action: "INVOICE_UPDATED",
+                actorId: actorId,
+                target: "INVOICE",
+                targetId: id,
+                details: `Revised invoice total to $${calculatedTotal}.`
+            }
+        });
+
+        res.json(updatedInvoice);
+    } catch (err: any) {
+        console.error("Failed to update invoice:", err);
+        res.status(500).json({ error: "Failed to update invoice", details: err.message });
+    }
+};
+
+export const getInvoiceLogs = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const logs = await prisma.auditLog.findMany({
+            where: { targetId: String(id) },
+            include: { actor: { select: { firstName: true, lastName: true, role: true } } },
+            orderBy: { timestamp: 'desc' }
+        });
+        res.json(logs);
+    } catch (err) {
+        console.error("Failed to fetch audit logs:", err);
+        res.status(500).json({ error: "Failed to fetch logs" });
+    }
+};
+
+export const deleteInvoice = async (req: any, res: Response) => {
+    try {
+        const { id } = req.params;
+        const invoiceId = String(id); 
+        const actorId = req.user.userId;
 
         if (!invoiceId) {
             return res.status(400).json({ error: "Invoice ID is required" });
@@ -119,6 +211,18 @@ export const deleteInvoice = async (req: Request, res: Response) => {
         await prisma.invoice.delete({
             where: { id: invoiceId }
         });
+
+        // Audit Trail
+        await prisma.auditLog.create({
+            data: {
+                action: "INVOICE_DELETED",
+                actorId: actorId,
+                target: "INVOICE",
+                targetId: invoiceId,
+                details: `Permanently removed invoice record.`
+            }
+        });
+
         res.status(204).send();
     } catch (err) {
         console.error("Failed to delete invoice:", err);

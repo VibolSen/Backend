@@ -2,12 +2,14 @@ import { Request, Response } from 'express';
 import prisma from '../prisma';
 
 // Helper to get today's range
-const getTodayRange = () => {
+// Helper to get today's range and date string
+const getTodayInfo = () => {
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return { today, tomorrow };
+    const dateStr = today.toISOString().split('T')[0];
+    const start = new Date(dateStr);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { dateStr, start, end };
 };
 
 export const getAttendance = async (req: Request, res: Response) => {
@@ -18,17 +20,15 @@ export const getAttendance = async (req: Request, res: Response) => {
         return;
     }
 
-    const { today, tomorrow } = getTodayRange();
+    const { dateStr } = getTodayInfo();
 
-    const attendanceRecord = await prisma.staffAttendance.findFirst({
+    const attendanceRecord = await prisma.staffAttendance.findUnique({
       where: {
-        userId: userId,
-        checkInTime: {
-          gte: today,
-          lt: tomorrow,
-        },
-      },
-      orderBy: { checkInTime: 'desc' },
+        staff_attendance_unique: {
+            userId: userId,
+            date: dateStr
+        }
+      }
     });
 
     res.json(attendanceRecord || null);
@@ -46,12 +46,14 @@ export const checkIn = async (req: Request, res: Response) => {
             return;
         }
 
-        const { today, tomorrow } = getTodayRange();
+        const { dateStr } = getTodayInfo();
         
-        const existing = await prisma.staffAttendance.findFirst({
+        const existing = await prisma.staffAttendance.findUnique({
             where: {
-                userId,
-                checkInTime: { gte: today, lt: tomorrow }
+                staff_attendance_unique: {
+                    userId,
+                    date: dateStr
+                }
             }
         });
 
@@ -71,6 +73,7 @@ export const checkIn = async (req: Request, res: Response) => {
         const record = await prisma.staffAttendance.create({
             data: {
                 userId,
+                date: dateStr,
                 checkInTime: now,
                 status,
                 lateMinutes,
@@ -93,19 +96,24 @@ export const checkOut = async (req: Request, res: Response) => {
              return;
         }
 
-        const { today, tomorrow } = getTodayRange();
-        const record = await prisma.staffAttendance.findFirst({
+        const { dateStr } = getTodayInfo();
+        const record = await prisma.staffAttendance.findUnique({
             where: {
-                userId,
-                checkInTime: { gte: today, lt: tomorrow },
-                checkOutTime: null
-            },
-            orderBy: { checkInTime: 'desc' }
+                staff_attendance_unique: {
+                    userId,
+                    date: dateStr
+                }
+            }
         });
 
         if (!record) {
              res.status(400).json({ error: 'No active shift found to terminate. Ensure you have initiated a shift first.' });
              return;
+        }
+
+        if (record.checkOutTime) {
+            res.status(400).json({ error: 'Shift already terminated for today.' });
+            return;
         }
 
         const updated = await prisma.staffAttendance.update({
@@ -120,31 +128,42 @@ export const checkOut = async (req: Request, res: Response) => {
     }
 }
 
+// Dispatcher for HR page
+export const checkAttendanceAction = async (req: Request, res: Response) => {
+    const { action } = req.body;
+    if (action === "CHECK_IN") return checkIn(req, res);
+    if (action === "CHECK_OUT") return checkOut(req, res);
+    res.status(400).json({ error: "Invalid action type" });
+}
+
 export const manualUpdate = async (req: Request, res: Response) => {
     try {
-        const { userId, date, status, checkOutTime } = req.body;
+        const { userId, date, status, checkOutTime, checkInTime } = req.body;
         if (!userId || !date || !status) {
              res.status(400).json({ error: 'Missing required fields' });
              return;
         }
         
-        const targetDate = new Date(date);
-        targetDate.setHours(0, 0, 0, 0);
+        const dateStr = new Date(date).toISOString().split('T')[0];
+        const cin = checkInTime ? new Date(checkInTime) : new Date(dateStr);
+        if (!checkInTime) cin.setHours(8, 0, 0, 0);
 
         const updated = await prisma.staffAttendance.upsert({
              where: {
                 staff_attendance_unique: {
                     userId,
-                    checkInTime: targetDate
+                    date: dateStr
                 }
              },
              update: {
                  status,
+                 checkInTime: cin,
                  checkOutTime: checkOutTime ? new Date(checkOutTime) : null
              },
              create: {
                  userId,
-                 checkInTime: targetDate,
+                 date: dateStr,
+                 checkInTime: cin,
                  status,
                  checkOutTime: checkOutTime ? new Date(checkOutTime) : null
              }
@@ -163,15 +182,15 @@ export const getStaffStats = async (req: Request, res: Response) => {
         
         const dateFilter: any = {};
         if (startDate && endDate) {
-            dateFilter.checkInTime = {
-                gte: new Date(startDate as string),
-                lte: new Date(endDate as string)
+            dateFilter.date = {
+                gte: String(startDate),
+                lte: String(endDate)
             };
         }
 
         const staff = await prisma.user.findMany({
             where: {
-                role: { in: ['HR', 'ADMIN', 'TEACHER'] }
+                role: { in: ['HR', 'ADMIN', 'TEACHER', 'STUDY_OFFICE', 'FINANCE'] }
             }
         });
 
@@ -179,7 +198,7 @@ export const getStaffStats = async (req: Request, res: Response) => {
              const present = await prisma.staffAttendance.count({
                  where: {
                      userId: user.id,
-                     status: 'PRESENT',
+                     status: { in: ['PRESENT', 'LATE'] },
                      ...dateFilter
                  }
              });
@@ -205,7 +224,33 @@ export const getStaffStats = async (req: Request, res: Response) => {
 };
 
 export const bulkFetchAttendance = async (req: Request, res: Response) => {
-    // ... (existing implementation)
+    try {
+        const { userIds, date } = req.body;
+        const dateStr = date || new Date().toISOString().split('T')[0];
+        
+        const query: any = {
+            where: {
+                date: dateStr
+            }
+        };
+
+        if (userIds && Array.isArray(userIds)) {
+            query.where.userId = { in: userIds };
+        }
+
+        const records = await prisma.staffAttendance.findMany(query);
+
+        // Convert array to dictionary indexed by userId
+        const attendanceMap: Record<string, any> = {};
+        records.forEach(record => {
+            attendanceMap[record.userId] = record;
+        });
+
+        res.json(attendanceMap);
+    } catch (err) {
+        console.error("Bulk fetch failed:", err);
+        res.status(500).json({ error: "Failed to fetch bulk attendance" });
+    }
 };
 
 export const getSessionAttendance = async (req: Request, res: Response) => {
@@ -253,7 +298,6 @@ export const submitSessionAttendance = async (req: Request, res: Response) => {
             return res.status(400).json({ error: "records array is required" });
         }
 
-        // We'll process each record
         const results = [];
         for (const record of records) {
             const { studentId, date, status, courseId } = record;
@@ -261,10 +305,7 @@ export const submitSessionAttendance = async (req: Request, res: Response) => {
             const attendanceDate = new Date(date);
             const startOfDay = new Date(attendanceDate);
             startOfDay.setHours(0, 0, 0, 0);
-            const endOfDay = new Date(attendanceDate);
-            endOfDay.setHours(23, 59, 59, 999);
 
-            // Find a group ID for this student and course if possible
             const group = await prisma.group.findFirst({
                 where: {
                     students: { some: { id: studentId } },
@@ -274,8 +315,6 @@ export const submitSessionAttendance = async (req: Request, res: Response) => {
             });
 
             if (!group) {
-                // If no group, we can't save to the current Attendance model because groupId is required
-                // For now, let's log this or skip. In a real scenario, we might need to update the schema
                 console.warn(`No group found for student ${studentId} and course ${courseId}`);
                 continue;
             }

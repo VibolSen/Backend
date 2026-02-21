@@ -1,16 +1,22 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma';
-import { uploadToCloudinary, deleteFromCloudinary } from '../middleware/upload';
+import { uploadToCloudinary, deleteFromCloudinary, getPublicIdFromUrl } from '../middleware/upload';
 
 export const updateMyProfile = async (req: any, res: Response) => {
   try {
-    const userId = req.user.userId; // From authenticateToken
-    const { firstName, lastName, phoneNumber, address, bio, dateOfBirth } = req.body;
+    const userId = req.user.userId;
+    console.log(`[ProfileController] Updating profile for user: ${userId}`);
     
-    // Check if an image was uploaded (in memory buffer)
+    // Support both phoneNumber and phone from frontend
+    const { firstName, lastName, phoneNumber, phone, address, bio, dateOfBirth } = req.body;
+    const finalPhone = phoneNumber || phone;
+    
+    // Check if an image was uploaded
     let avatarUrl = undefined;
     if (req.file) {
       try {
+        console.log(`[ProfileController] File detected: ${req.file.originalname} (${req.file.size} bytes)`);
+        
         // 1. Get current profile to find old image URL
         const currentProfile = await prisma.profile.findUnique({
           where: { userId: userId }
@@ -19,36 +25,21 @@ export const updateMyProfile = async (req: any, res: Response) => {
         // 2. Upload new image
         const result = await uploadToCloudinary(req.file.buffer, 'school-management-profiles');
         avatarUrl = result.secure_url;
+        console.log(`[ProfileController] Uploaded to Cloudinary: ${avatarUrl}`);
 
         // 3. Delete old image from Cloudinary if it exists
-        if (currentProfile?.avatar && currentProfile.avatar.includes('cloudinary.com')) {
-          try {
-            // Extract public_id from URL: /upload/(v[0-9]+/)?(folder/public_id)
-            const parts = currentProfile.avatar.split('/upload/');
-            if (parts.length > 1) {
-              const pathWithPossibleVersion = parts[1]; // e.g. "v123456/folder/id.jpg" or "folder/id.jpg"
-              const pathParts = pathWithPossibleVersion.split('/');
-              
-              // If it starts with 'v' and a number, it's a version, remove it
-              if (pathParts[0].startsWith('v') && !isNaN(parseInt(pathParts[0].substring(1)))) {
-                pathParts.shift();
-              }
-              
-              // Join the rest and remove extension
-              const publicIdWithExtension = pathParts.join('/');
-              const publicId = publicIdWithExtension.substring(0, publicIdWithExtension.lastIndexOf('.'));
-              
-              console.log("Deleting old image with publicId:", publicId);
-              await deleteFromCloudinary(publicId);
-            }
-          } catch (deleteErr) {
-            console.error("Failed to delete old image from Cloudinary:", deleteErr);
-            // We don't block the update if deletion fails, just log it
+        if (currentProfile?.avatar) {
+          const publicId = getPublicIdFromUrl(currentProfile.avatar);
+          if (publicId) {
+            console.log(`[ProfileController] Deleting old image with publicId: ${publicId}`);
+            await deleteFromCloudinary(publicId).catch(err => {
+               console.error(`[ProfileController] Cloudinary deletion error:`, err.message);
+            });
           }
         }
-      } catch (uploadErr) {
-        console.error("Cloudinary manual upload failed:", uploadErr);
-        return res.status(500).json({ error: "Image upload failed" });
+      } catch (uploadErr: any) {
+        console.error("[ProfileController] Cloudinary upload failed:", uploadErr);
+        return res.status(500).json({ error: "Image upload failed", details: uploadErr.message });
       }
     }
 
@@ -56,31 +47,29 @@ export const updateMyProfile = async (req: any, res: Response) => {
     await prisma.user.update({
       where: { id: userId },
       data: {
-        firstName,
-        lastName,
+        ...(firstName && { firstName }),
+        ...(lastName && { lastName }),
       }
     });
 
     // 2. Upsert (Update or Create) the Profile record
-    // We construct the data object dynamically to only include defined fields if we want partial updates,
-    // but upsert generally replaces or creates.
-    
+    const profileData: any = {
+        ...(finalPhone !== undefined && { phone: finalPhone }),
+        ...(address !== undefined && { address }),
+        ...(bio !== undefined && { bio }),
+        ...(avatarUrl && { avatar: avatarUrl }),
+        ...(dateOfBirth && { dateOfBirth: new Date(dateOfBirth) })
+    };
+
+    console.log(`[ProfileController] Upserting profile data:`, Object.keys(profileData));
+
     await prisma.profile.upsert({
         where: { userId: userId },
-        update: {
-            phone: phoneNumber,
-            address: address,
-            bio: bio,
-            ...(avatarUrl && { avatar: avatarUrl }),
-            ...(dateOfBirth && { dateOfBirth: new Date(dateOfBirth) })
-        },
+        update: profileData,
         create: {
             userId: userId,
-            phone: phoneNumber,
-            address: address,
-            bio: bio,
-            avatar: avatarUrl || "", // Default empty if not provided
-            ...(dateOfBirth && { dateOfBirth: new Date(dateOfBirth) })
+            ...profileData,
+            avatar: avatarUrl || ""
         }
     });
 
@@ -92,11 +81,11 @@ export const updateMyProfile = async (req: any, res: Response) => {
         }
     });
 
+    console.log(`[ProfileController] Update successful for ${updatedUser?.email}`);
     res.json({ success: true, user: updatedUser });
 
   } catch (err: any) {
-    console.error("Profile update error:", err);
-    console.error("Stack trace:", err.stack);
+    console.error("[ProfileController] Error:", err);
     res.status(500).json({ error: "Failed to update profile", details: err.message });
   }
 };

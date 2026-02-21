@@ -26,7 +26,7 @@ export const login = async (req: Request, res: Response) => {
 
     // Check if account is active
     if (user.isActive === false) {
-      return res.status(403).json({ error: "Your account has been deactivated. Please contact administration." });
+      return res.status(403).json({ error: "Your account has been suspended. Please contact administration." });
     }
 
     // Update last login

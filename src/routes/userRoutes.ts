@@ -14,63 +14,21 @@ const router = Router();
  *   description: User and Profile management API
  */
 
-/**
- * @swagger
- * /api/users:
- *   get:
- *     summary: Get all users
- *     tags: [Users]
- *     responses:
- *       200:
- *         description: List of users
- */
-router.get('/', getUsers);
-router.get('/:id', getUser);
-router.post('/', createUser);
-router.put('/', updateUser);
-router.delete('/', deleteUser);
+// --- User Management (Restricted to ADMIN/HR) ---
+router.get('/', authenticateToken, authorizeRoles('ADMIN', 'HR'), getUsers);
+router.get('/:id', authenticateToken, authorizeRoles('ADMIN', 'HR'), getUser);
+router.post('/', authenticateToken, authorizeRoles('ADMIN', 'HR'), createUser);
+router.put('/:id', authenticateToken, authorizeRoles('ADMIN', 'HR'), updateUser);
+router.delete('/:id', authenticateToken, authorizeRoles('ADMIN'), deleteUser);
 
-// ✅ Account Management Routes
-router.patch('/toggle-status/:id', toggleUserStatus);
-router.post('/reset-password/:id', adminResetPassword);
+// ✅ Account Activity & Security (Restricted)
+router.patch('/toggle-status/:id', authenticateToken, authorizeRoles('ADMIN', 'HR'), toggleUserStatus);
+router.post('/reset-password/:id', authenticateToken, authorizeRoles('ADMIN', 'HR'), adminResetPassword);
 router.post('/bulk-create', authenticateToken, authorizeRoles('ADMIN', 'HR'), bulkCreateUsers);
 router.get('/audit-logs', authenticateToken, authorizeRoles('ADMIN'), getAuditLogs);
 
-/**
- * @swagger
- * /api/users/profile/{id}:
- *   get:
- *     summary: Get user profile
- *     tags: [Users]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Profile details
- *   put:
- *     summary: Update user profile
- *     tags: [Users]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *     responses:
- *       200:
- *         description: Profile updated
- */
-router.get('/profile/:id', getProfile);
-router.put('/profile/:id', updateProfile);
+// --- Profile Management (Authenticated) ---
+router.get('/profile/:id', authenticateToken, getProfile);
+router.put('/profile/:id', authenticateToken, updateProfile);
 
 export default router;

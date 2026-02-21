@@ -1,10 +1,12 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
+import { AuthRequest } from '../middleware/auth';
 import prisma from '../prisma';
 import { KHQR, TAG, CURRENCY, COUNTRY } from 'ts-khqr';
 
 // Invoices
-export const getInvoices = async (req: any, res: Response) => {
+export const getInvoices = async (req: AuthRequest, res: Response) => {
   try {
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
     const { userId, role } = req.user;
     
     // If student, only show their own invoices. Otherwise (Admin/Finance), show all.
@@ -29,9 +31,11 @@ export const getInvoices = async (req: any, res: Response) => {
   }
 };
 
-export const getInvoiceById = async (req: Request, res: Response) => {
+export const getInvoiceById = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
+        if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+
         const invoice = await prisma.invoice.findUnique({
             where: { id: String(id) },
             include: {
@@ -49,6 +53,11 @@ export const getInvoiceById = async (req: Request, res: Response) => {
             return res.status(404).json({ error: "Invoice not found" });
         }
 
+        // IDOR Protection: Students can only view their own invoices
+        if (req.user.role === 'STUDENT' && invoice.studentId !== req.user.userId) {
+            return res.status(403).json({ error: "Access denied. You can only view your own invoices." });
+        }
+
         res.json(invoice);
     } catch (err) {
         console.error("Failed to fetch invoice details:", err);
@@ -56,9 +65,10 @@ export const getInvoiceById = async (req: Request, res: Response) => {
     }
 };
 
-export const createInvoice = async (req: any, res: Response) => {
+export const createInvoice = async (req: AuthRequest, res: Response) => {
   try {
     const { studentId, issueDate, dueDate, totalAmount, items } = req.body;
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
     const actorId = req.user.userId;
     
     // Validate items structure
@@ -118,14 +128,15 @@ export const createInvoice = async (req: any, res: Response) => {
   }
 };
 
-export const updateInvoice = async (req: any, res: Response) => {
+export const updateInvoice = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         const { studentId, issueDate, dueDate, items } = req.body;
+        if (!req.user) return res.status(401).json({ error: "Unauthorized" });
         const actorId = req.user.userId;
 
         // 1. Delete existing items
-        await prisma.invoiceItem.deleteMany({ where: { invoiceId: id } });
+        await prisma.invoiceItem.deleteMany({ where: { invoiceId: id as string } });
 
         // 2. Format new items
         const formattedItems = items.map((item: any) => ({
@@ -157,7 +168,7 @@ export const updateInvoice = async (req: any, res: Response) => {
                 action: "INVOICE_UPDATED",
                 actorId: actorId,
                 target: "INVOICE",
-                targetId: id,
+                targetId: id as string,
                 details: `Revised invoice total to $${calculatedTotal}.`
             }
         });
@@ -169,7 +180,7 @@ export const updateInvoice = async (req: any, res: Response) => {
     }
 };
 
-export const getInvoiceLogs = async (req: Request, res: Response) => {
+export const getInvoiceLogs = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         const logs = await prisma.auditLog.findMany({
@@ -177,17 +188,24 @@ export const getInvoiceLogs = async (req: Request, res: Response) => {
             include: { actor: { select: { firstName: true, lastName: true, role: true } } },
             orderBy: { timestamp: 'desc' }
         });
-        res.json(logs);
+
+        const safeLogs = logs.map(log => ({
+            ...log,
+            actor: log.actor || { firstName: "Deleted", lastName: "User", role: "UNKNOWN" }
+        }));
+
+        res.json(safeLogs);
     } catch (err) {
         console.error("Failed to fetch audit logs:", err);
         res.status(500).json({ error: "Failed to fetch logs" });
     }
 };
 
-export const deleteInvoice = async (req: any, res: Response) => {
+export const deleteInvoice = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         const invoiceId = String(id); 
+        if (!req.user) return res.status(401).json({ error: "Unauthorized" });
         const actorId = req.user.userId;
 
         if (!invoiceId) {
@@ -231,7 +249,7 @@ export const deleteInvoice = async (req: any, res: Response) => {
 };
 
 // Fees
-export const getFees = async (req: Request, res: Response) => {
+export const getFees = async (req: AuthRequest, res: Response) => {
     try {
         const fees = await prisma.fee.findMany();
         res.json(fees);
@@ -241,7 +259,7 @@ export const getFees = async (req: Request, res: Response) => {
     }
 };
 
-export const createFee = async (req: Request, res: Response) => {
+export const createFee = async (req: AuthRequest, res: Response) => {
     try {
         const { name, description, amount } = req.body;
         const fee = await prisma.fee.create({
@@ -258,7 +276,7 @@ export const createFee = async (req: Request, res: Response) => {
     }
 };
 
-export const updateFee = async (req: Request, res: Response) => {
+export const updateFee = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         const { name, description, amount } = req.body;
@@ -277,7 +295,7 @@ export const updateFee = async (req: Request, res: Response) => {
     }
 };
 
-export const deleteFee = async (req: Request, res: Response) => {
+export const deleteFee = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         await prisma.fee.delete({ where: { id: String(id) } });
@@ -289,7 +307,7 @@ export const deleteFee = async (req: Request, res: Response) => {
 };
 
 // Payments
-export const getPayments = async (req: Request, res: Response) => {
+export const getPayments = async (req: AuthRequest, res: Response) => {
     try {
         const payments = await prisma.payment.findMany({
             include: { // Optionally include related data if needed
@@ -310,7 +328,7 @@ export const getPayments = async (req: Request, res: Response) => {
     }
 };
 
-export const createPayment = async (req: Request, res: Response) => {
+export const createPayment = async (req: AuthRequest, res: Response) => {
     try {
         const { invoiceId, amount, paymentDate, paymentMethod, transactionId, notes } = req.body;
         
@@ -355,7 +373,7 @@ export const createPayment = async (req: Request, res: Response) => {
     }
 };
 
-export const updatePayment = async (req: Request, res: Response) => {
+export const updatePayment = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         const { amount, paymentDate, paymentMethod, transactionId, notes } = req.body;
@@ -376,7 +394,7 @@ export const updatePayment = async (req: Request, res: Response) => {
     }
 };
 
-export const deletePayment = async (req: Request, res: Response) => {
+export const deletePayment = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         // Optionally revert invoice status if needed, but for now simple delete
@@ -389,7 +407,7 @@ export const deletePayment = async (req: Request, res: Response) => {
 };
 
 // Expenses
-export const getExpenses = async (req: Request, res: Response) => {
+export const getExpenses = async (req: AuthRequest, res: Response) => {
     try {
         const expenses = await prisma.expense.findMany({
             orderBy: { date: 'desc' }
@@ -401,7 +419,7 @@ export const getExpenses = async (req: Request, res: Response) => {
     }
 };
 
-export const createExpense = async (req: Request, res: Response) => {
+export const createExpense = async (req: AuthRequest, res: Response) => {
     try {
         const { category, description, amount, date } = req.body;
         const expense = await prisma.expense.create({
@@ -419,7 +437,7 @@ export const createExpense = async (req: Request, res: Response) => {
     }
 };
 
-export const updateExpense = async (req: Request, res: Response) => {
+export const updateExpense = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         const { category, description, amount, date } = req.body;
@@ -439,7 +457,7 @@ export const updateExpense = async (req: Request, res: Response) => {
     }
 };
 
-export const deleteExpense = async (req: Request, res: Response) => {
+export const deleteExpense = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         await prisma.expense.delete({
@@ -452,7 +470,7 @@ export const deleteExpense = async (req: Request, res: Response) => {
     }
 };
 
-export const generatePaymentQR = async (req: Request, res: Response) => {
+export const generatePaymentQR = async (req: AuthRequest, res: Response) => {
     try {
         const { amount, currency = "USD", invoiceId } = req.body;
         
@@ -469,7 +487,7 @@ export const generatePaymentQR = async (req: Request, res: Response) => {
         
         // IMPORTANT: KHQR Subtag 62.01 (Bill Number) has a strict length limit (usually 15 chars).
         // MongoDB ID (24 chars) is TOO LONG. We use the last 12 chars which is unique enough.
-        const shortId = invoiceId.substring(invoiceId.length - 12);
+        const shortId = (invoiceId as string).substring((invoiceId as string).length - 12);
         const validBillNumber = shortId;
 
         const payload = {
@@ -502,7 +520,7 @@ export const generatePaymentQR = async (req: Request, res: Response) => {
     }
 };
 
-export const checkBakongStatus = async (req: Request, res: Response) => {
+export const checkBakongStatus = async (req: AuthRequest, res: Response) => {
     try {
         const { invoiceId } = req.params;
         const { md5 } = req.query; 
@@ -587,7 +605,7 @@ export const checkBakongStatus = async (req: Request, res: Response) => {
     }
 };
 
-export const bakongCallback = async (req: Request, res: Response) => {
+export const bakongCallback = async (req: AuthRequest, res: Response) => {
     try {
         console.log(" Bakong Callback Inbound Payload:", JSON.stringify(req.body, null, 2));
         
@@ -605,16 +623,16 @@ export const bakongCallback = async (req: Request, res: Response) => {
 
         // Lookup: If it's a short ID (12 chars), find by suffix. If 24, find direct.
         let invoice;
-        if (targetInvoiceId.length === 24) {
+        if ((targetInvoiceId as string).length === 24) {
             invoice = await prisma.invoice.findUnique({
-                where: { id: targetInvoiceId },
+                where: { id: targetInvoiceId as string },
                 include: { payments: true }
             });
         } else {
             // Find invoice where ID ends with this shortId
             // In Prisma/MongoDB, we might need a raw query or fetch multiple
             const allInvoices = await prisma.invoice.findMany({
-                where: { id: { endsWith: targetInvoiceId } },
+                where: { id: { endsWith: targetInvoiceId as string } },
                 include: { payments: true }
             });
             invoice = allInvoices[0];
@@ -669,7 +687,7 @@ export const bakongCallback = async (req: Request, res: Response) => {
 
 // --- User Benefits & Payroll ---
 
-export const getUserBenefits = async (req: Request, res: Response) => {
+export const getUserBenefits = async (req: AuthRequest, res: Response) => {
     try {
         const benefits = await (prisma as any).userBenefit.findMany({
             include: {
@@ -685,7 +703,7 @@ export const getUserBenefits = async (req: Request, res: Response) => {
     }
 };
 
-export const updateUserBenefit = async (req: Request, res: Response) => {
+export const updateUserBenefit = async (req: AuthRequest, res: Response) => {
     try {
         const { userId, baseSalary, bonus, allowance, deduction, currency } = req.body;
         
@@ -702,7 +720,7 @@ export const updateUserBenefit = async (req: Request, res: Response) => {
     }
 };
 
-export const getPayrolls = async (req: Request, res: Response) => {
+export const getPayrolls = async (req: AuthRequest, res: Response) => {
     try {
         const payrolls = await (prisma as any).payroll.findMany({
             include: {
@@ -719,7 +737,7 @@ export const getPayrolls = async (req: Request, res: Response) => {
     }
 };
 
-export const generatePayrolls = async (req: Request, res: Response) => {
+export const generatePayrolls = async (req: AuthRequest, res: Response) => {
     try {
         const { period } = req.body; // e.g., "2024-03"
         
@@ -765,7 +783,7 @@ export const generatePayrolls = async (req: Request, res: Response) => {
     }
 };
 
-export const updatePayrollStatus = async (req: Request, res: Response) => {
+export const updatePayrollStatus = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         const { status, paymentDate, transactionHash } = req.body;
@@ -788,7 +806,7 @@ export const updatePayrollStatus = async (req: Request, res: Response) => {
 
 // --- Budgeting ---
 
-export const getBudgets = async (req: Request, res: Response) => {
+export const getBudgets = async (req: AuthRequest, res: Response) => {
     try {
         const budgets = await (prisma as any).budget.findMany({
             include: {
@@ -803,7 +821,7 @@ export const getBudgets = async (req: Request, res: Response) => {
     }
 };
 
-export const createBudget = async (req: Request, res: Response) => {
+export const createBudget = async (req: AuthRequest, res: Response) => {
     try {
         const { departmentId, amount, period } = req.body;
         
@@ -824,7 +842,7 @@ export const createBudget = async (req: Request, res: Response) => {
     }
 };
 
-export const addBudgetItem = async (req: Request, res: Response) => {
+export const addBudgetItem = async (req: AuthRequest, res: Response) => {
     try {
         const { budgetId, description, amount } = req.body;
         
@@ -852,7 +870,7 @@ export const addBudgetItem = async (req: Request, res: Response) => {
     }
 };
 
-export const getBudgetById = async (req: Request, res: Response) => {
+export const getBudgetById = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         const budget = await (prisma as any).budget.findUnique({
@@ -862,13 +880,14 @@ export const getBudgetById = async (req: Request, res: Response) => {
                 items: { orderBy: { date: 'desc' } }
             }
         });
+        if (!budget) return res.status(404).json({ error: "Budget not found" });
         res.json(budget);
     } catch (err) {
         console.error("Failed to fetch budget details:", err);
         res.status(500).json({ error: "Failed to fetch budget details" });
     }
 };
-export const sendReminders = async (req: Request, res: Response) => {
+export const sendReminders = async (req: AuthRequest, res: Response) => {
     try {
         // 1. Get all invoices that are "SENT" or "OVERDUE"
         const pendingInvoices = await prisma.invoice.findMany({

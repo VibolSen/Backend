@@ -47,16 +47,51 @@ import { startCronJobs } from './services/cronService';
 
 // Environment variables are loaded via import 'dotenv/config' at the top
 
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+
+// ... (existing imports)
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// CORS Configuration - Allow Frontend to access Backend
+// 1. Security Headers (Helmet)
+app.use(helmet());
+
+// 2. Rate Limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // Increased for development to prevent Network Errors
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: "Too many requests from this IP, please try again after 15 minutes"
+});
+
+// Apply rate limiter to all API routes
+app.use('/api/', limiter);
+
+// 3. CORS Configuration
+const allowedOrigins = [
+  'http://localhost:3000', // Next.js Frontend
+  'http://127.0.0.1:3000',
+  process.env.FRONTEND_URL // Production URL if defined
+].filter(Boolean) as string[];
+
 app.use(cors({
-  origin: (origin, callback) => callback(null, true), // Allow all origins (including mobile apps/tunnels)
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl) 
+    // but in production, you should probably be more restrictive
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

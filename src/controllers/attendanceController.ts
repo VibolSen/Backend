@@ -1,4 +1,5 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
+import { AuthRequest } from '../middleware/auth';
 import prisma from '../prisma';
 
 // Helper to get today's range
@@ -12,12 +13,24 @@ const getTodayInfo = () => {
     return { dateStr, start, end };
 };
 
-export const getAttendance = async (req: Request, res: Response) => {
+export const getAttendance = async (req: AuthRequest, res: Response) => {
   try {
-    const userId = req.query.userId as string;
-    if (!userId) {
-        res.status(400).json({ error: 'User ID is required' });
-        return;
+    // If query has userId, ensure the requester is an Admin or HR, or is requesting their own data
+    let userId = req.query.userId as string;
+    
+    if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    if (userId && userId !== req.user.userId) {
+        // Checking someone else's attendance - require higher role
+        const allowedRoles = ['ADMIN', 'HR', 'STUDY_OFFICE'];
+        if (!allowedRoles.includes(req.user.role)) {
+            return res.status(403).json({ error: 'Insufficient permissions to view other users attendance' });
+        }
+    } else {
+        // Default to self
+        userId = req.user.userId;
     }
 
     const { dateStr } = getTodayInfo();
@@ -38,14 +51,15 @@ export const getAttendance = async (req: Request, res: Response) => {
   }
 };
 
-export const checkIn = async (req: Request, res: Response) => {
+export const checkIn = async (req: AuthRequest, res: Response) => {
     try {
-        const { userId } = req.body;
-        if (!userId) {
-            res.status(400).json({ error: 'User identity (userId) is missing from request' });
-            return;
+        // ALWAYS use the authenticated userId from the token, NOT the request body
+        // This prevents users from checking in for each other (IDOR)
+        if (!req.user) {
+            return res.status(401).json({ error: 'Authentication required' });
         }
-
+        
+        const userId = req.user.userId;
         const { dateStr } = getTodayInfo();
         
         const existing = await prisma.staffAttendance.findUnique({
@@ -88,14 +102,13 @@ export const checkIn = async (req: Request, res: Response) => {
     }
 }
 
-export const checkOut = async (req: Request, res: Response) => {
+export const checkOut = async (req: AuthRequest, res: Response) => {
     try {
-        const { userId } = req.body;
-        if (!userId) {
-             res.status(400).json({ error: 'User ID is required' });
-             return;
+        if (!req.user) {
+            return res.status(401).json({ error: 'Authentication required' });
         }
 
+        const userId = req.user.userId;
         const { dateStr } = getTodayInfo();
         const record = await prisma.staffAttendance.findUnique({
             where: {
@@ -129,14 +142,14 @@ export const checkOut = async (req: Request, res: Response) => {
 }
 
 // Dispatcher for HR page
-export const checkAttendanceAction = async (req: Request, res: Response) => {
+export const checkAttendanceAction = async (req: AuthRequest, res: Response) => {
     const { action } = req.body;
     if (action === "CHECK_IN") return checkIn(req, res);
     if (action === "CHECK_OUT") return checkOut(req, res);
     res.status(400).json({ error: "Invalid action type" });
 }
 
-export const manualUpdate = async (req: Request, res: Response) => {
+export const manualUpdate = async (req: AuthRequest, res: Response) => {
     try {
         const { userId, date, status, checkOutTime, checkInTime } = req.body;
         if (!userId || !date || !status) {
@@ -176,7 +189,7 @@ export const manualUpdate = async (req: Request, res: Response) => {
     }
 }
 
-export const getStaffStats = async (req: Request, res: Response) => {
+export const getStaffStats = async (req: AuthRequest, res: Response) => {
     try {
         const { startDate, endDate } = req.query;
         
@@ -223,7 +236,7 @@ export const getStaffStats = async (req: Request, res: Response) => {
     }
 };
 
-export const bulkFetchAttendance = async (req: Request, res: Response) => {
+export const bulkFetchAttendance = async (req: AuthRequest, res: Response) => {
     try {
         const { userIds, date } = req.body;
         const dateStr = date || new Date().toISOString().split('T')[0];
@@ -253,7 +266,7 @@ export const bulkFetchAttendance = async (req: Request, res: Response) => {
     }
 };
 
-export const getSessionAttendance = async (req: Request, res: Response) => {
+export const getSessionAttendance = async (req: AuthRequest, res: Response) => {
     try {
         const { courseId, date } = req.query;
         if (!courseId || !date) {
@@ -291,7 +304,7 @@ export const getSessionAttendance = async (req: Request, res: Response) => {
     }
 };
 
-export const submitSessionAttendance = async (req: Request, res: Response) => {
+export const submitSessionAttendance = async (req: AuthRequest, res: Response) => {
     try {
         const { records } = req.body;
         if (!records || !Array.isArray(records)) {

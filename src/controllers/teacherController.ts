@@ -11,6 +11,8 @@ export const getTeachers = async (req: Request, res: Response) => {
         lastName: true,
         email: true,
         role: true,
+        isActive: true,
+        profile: true,
         _count: {
             select: {
               ledCourses: true,

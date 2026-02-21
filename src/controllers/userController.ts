@@ -6,7 +6,7 @@ import { logAudit } from '../utils/audit';
 import { generateStudentId } from '../utils/idGenerator';
 import { authenticateToken } from '../middleware/auth';
 
-export const getUser = async (req: Request, res: Response) => {
+export const getUser = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const user = await prisma.user.findUnique({
@@ -31,7 +31,7 @@ export const getUser = async (req: Request, res: Response) => {
   }
 };
 
-export const getUsers = async (req: Request, res: Response) => {
+export const getUsers = async (req: AuthRequest, res: Response) => {
   try {
     const { role, status } = req.query;
     const where: any = {};
@@ -63,9 +63,13 @@ export const getUsers = async (req: Request, res: Response) => {
   }
 };
 
-export const createUser = async (req: Request, res: Response) => {
+export const createUser = async (req: AuthRequest, res: Response) => {
   try {
     const { email, password, firstName, lastName, role, gender } = req.body;
+    
+    if (/\d/.test(firstName) || /\d/.test(lastName)) {
+      return res.status(400).json({ error: "Names cannot contain numbers" });
+    }
     
     // Hash password
     const hashedPassword = await bcrypt.hash(password || '123456', 10);
@@ -96,6 +100,9 @@ export const createUser = async (req: Request, res: Response) => {
         profile: true
       }
     });
+    if (req.user) {
+      await logAudit(req.user.userId, "USER_CREATED", "USER", newUser.id, { email, role });
+    }
     res.status(201).json(newUser);
   } catch (error) {
     console.error("Failed to create user:", error);
@@ -103,9 +110,16 @@ export const createUser = async (req: Request, res: Response) => {
   }
 };
 
-export const getProfile = async (req: Request, res: Response) => {
+export const getProfile = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+    
+    // IDOR Protection: Only self, ADMIN, or HR can view a profile
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    if (req.user.role !== 'ADMIN' && req.user.role !== 'HR' && req.user.userId !== id) {
+      return res.status(403).json({ error: "Access denied. You can only view your own profile." });
+    }
+
     const profile = await prisma.profile.findUnique({
       where: { userId: String(id) },
       include: { user: true }
@@ -120,9 +134,16 @@ export const getProfile = async (req: Request, res: Response) => {
   }
 };
 
-export const updateProfile = async (req: Request, res: Response) => {
+export const updateProfile = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+
+    // IDOR Protection: Only self, ADMIN, or HR can update a profile
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    if (req.user.role !== 'ADMIN' && req.user.role !== 'HR' && req.user.userId !== id) {
+      return res.status(403).json({ error: "Access denied. You can only update your own profile." });
+    }
+
     const { 
       bio, avatar, address, phone, dateOfBirth, gender,
       academicStatus, emergencyContactName, emergencyContactPhone, emergencyContactRelation,
@@ -172,6 +193,9 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
   try {
     const id = (req.query.id as string) || req.params.id;
     const { email, firstName, lastName, role, isActive, specialization, maxWorkload } = req.body;
+
+    if (firstName && /\d/.test(firstName)) return res.status(400).json({ error: "First name cannot contain numbers" });
+    if (lastName && /\d/.test(lastName)) return res.status(400).json({ error: "Last name cannot contain numbers" });
 
     if (!id) return res.status(400).json({ error: "User ID is required" });
 
@@ -260,6 +284,15 @@ export const toggleUserStatus = async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const { isActive } = req.body;
 
+    // STUDY_OFFICE can only suspend/activate STUDENT accounts
+    if (req.user?.role === 'STUDY_OFFICE') {
+      const targetUser = await prisma.user.findUnique({ where: { id: String(id) }, select: { role: true } });
+      if (!targetUser) return res.status(404).json({ error: "User not found" });
+      if (targetUser.role !== 'STUDENT') {
+        return res.status(403).json({ error: "Study Office can only manage student accounts." });
+      }
+    }
+
     const updatedUser = await prisma.user.update({
       where: { id: String(id) },
       data: { isActive },
@@ -276,7 +309,7 @@ export const toggleUserStatus = async (req: AuthRequest, res: Response) => {
   }
 };
 
-export const deleteUser = async (req: Request, res: Response) => {
+export const deleteUser = async (req: AuthRequest, res: Response) => {
   try {
     const id = (req.query.id as string) || req.params.id;
     if (!id) return res.status(400).json({ error: "User ID is required" });
@@ -284,6 +317,9 @@ export const deleteUser = async (req: Request, res: Response) => {
     await prisma.user.delete({
       where: { id: String(id) },
     });
+    if (req.user) {
+      await logAudit(req.user.userId, "USER_DELETED", "USER", String(id));
+    }
     res.json({ message: "User deleted successfully" });
   } catch (error) {
     console.error("Failed to delete user:", error);
@@ -345,6 +381,9 @@ export const bulkCreateUsers = async (req: AuthRequest, res: Response) => {
 export const getAuditLogs = async (req: AuthRequest, res: Response) => {
   try {
     const logs = await prisma.auditLog.findMany({
+      // We still try to include the actor, but we'll handle the logic in the frontend 
+      // if it's missing. Prisma will return null for the actor if the relation is broken
+      // in MongoDB when the record exists but the target doesn't.
       include: {
         actor: {
           select: {
@@ -357,11 +396,22 @@ export const getAuditLogs = async (req: AuthRequest, res: Response) => {
       orderBy: {
         timestamp: 'desc'
       },
-      take: 100 // Limit to last 100 for performance
+      take: 100
     });
-    res.json(logs);
-  } catch (error) {
+    
+    // Fallback for missing actors to prevent frontend crashes
+    const safeLogs = logs.map(log => ({
+      ...log,
+      actor: log.actor || { firstName: "Deleted", lastName: "User", role: "UNKNOWN" }
+    }));
+
+    res.json(safeLogs);
+  } catch (error: any) {
     console.error("Failed to fetch audit logs:", error);
-    res.status(500).json({ error: "Failed to fetch audit logs" });
+    res.status(500).json({ 
+      error: "Failed to fetch audit logs", 
+      message: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined 
+    });
   }
 };

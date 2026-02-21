@@ -11,6 +11,8 @@ import {
     checkAttendanceAction 
 } from '../controllers/attendanceController';
 
+import { authenticateToken, authorizeRoles } from '../middleware/auth';
+
 const router = Router();
 
 /**
@@ -20,14 +22,19 @@ const router = Router();
  *   description: Attendance management API
  */
 
-router.get('/', getAttendance);
-router.post('/', checkAttendanceAction); // New dispatcher for generic POST /attendance
-router.get('/session', getSessionAttendance);
-router.post('/session', submitSessionAttendance);
-router.get('/stats', getStaffStats);
-router.post('/check-in', checkIn);
-router.post('/check-out', checkOut);
-router.post('/bulk', bulkFetchAttendance);
-router.post('/manual', manualUpdate);
+// --- Self-Service Routes (Authenticated User) ---
+router.get('/', authenticateToken, getAttendance);
+router.post('/', authenticateToken, checkAttendanceAction);
+router.post('/check-in', authenticateToken, checkIn);
+router.post('/check-out', authenticateToken, checkOut);
+
+// --- Session Attendance (Teachers/Study Office) ---
+router.get('/session', authenticateToken, authorizeRoles('TEACHER', 'ADMIN', 'STUDY_OFFICE'), getSessionAttendance);
+router.post('/session', authenticateToken, authorizeRoles('TEACHER', 'ADMIN', 'STUDY_OFFICE'), submitSessionAttendance);
+
+// --- Administrative Routes (HR/Admin/Study Office) ---
+router.get('/stats', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), getStaffStats);
+router.post('/bulk', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), bulkFetchAttendance);
+router.post('/manual', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), manualUpdate);
 
 export default router;

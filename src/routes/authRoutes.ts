@@ -39,41 +39,6 @@ const router = Router();
  */
 router.post('/login', login);
 
-/**
- * @swagger
- * /api/auth/register:
- *   post:
- *     summary: User registration
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - email
- *               - password
- *               - firstName
- *               - lastName
- *             properties:
- *               email:
- *                 type: string
- *               password:
- *                 type: string
- *               firstName:
- *                 type: string
- *               lastName:
- *                 type: string
- *               role:
- *                 type: string
- *     responses:
- *       201:
- *         description: Registration successful
- *       400:
- *         description: User already exists
- */
-router.post('/register', register);
 
 /**
  * @swagger

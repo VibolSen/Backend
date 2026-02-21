@@ -1,6 +1,8 @@
 import express from 'express';
 import { getStudents, createStudent, updateStudent, deleteStudent, getStudentCourses, getStudentAssignments, getStudentAttendance, getStudentExams } from '../controllers/studentController';
 
+import { authenticateToken, authorizeRoles } from '../middleware/auth';
+
 const router = express.Router();
 
 /**
@@ -10,119 +12,16 @@ const router = express.Router();
  *   description: Student management API
  */
 
-/**
- * @swagger
- * /api/students/my-courses:
- *   get:
- *     summary: Get courses for a specific student
- *     tags: [Students]
- *     parameters:
- *       - in: query
- *         name: studentId
- *         required: true
- *         schema:
- *           type: string
- *         description: The ID of the student
- *     responses:
- *       200:
- *         description: List of courses for the student
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Course'
- *       404:
- *         description: Student not found
- */
-router.get('/my-courses', getStudentCourses);
+// --- Self-Service & Student Specific Routes (Authenticated) ---
+router.get('/my-courses', authenticateToken, getStudentCourses);
+router.get('/my-assignments', authenticateToken, getStudentAssignments);
+router.get('/my-attendance', authenticateToken, getStudentAttendance);
+router.get('/my-exams', authenticateToken, getStudentExams);
 
-/**
- * @swagger
- * /api/students/my-assignments:
- *   get:
- *     summary: Get assignments for a specific student
- *     tags: [Students]
- *     parameters:
- *       - in: query
- *         name: studentId
- *         required: true
- *         schema:
- *           type: string
- *         description: The ID of the student
- *     responses:
- *       200:
- *         description: List of assignments for the student
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/AssignmentSubmission'
- *       404:
- *         description: Student not found or no assignments
- */
-router.get('/my-assignments', getStudentAssignments);
-router.get('/my-attendance', getStudentAttendance);
-router.get('/my-exams', getStudentExams);
-
-/**
- * @swagger
- * /api/students:
- *   get:
- *     summary: Get all students
- *     tags: [Students]
- *     responses:
- *       200:
- *         description: List of students
- *   post:
- *     summary: Create a new student
- *     tags: [Students]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *     responses:
- *       201:
- *         description: Student created
- *
- * /api/students/{id}:
- *   put:
- *     summary: Update a student
- *     tags: [Students]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *     responses:
- *       200:
- *         description: Student updated
- *   delete:
- *     summary: Delete a student
- *     tags: [Students]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Student deleted
- */
-router.get('/', getStudents);
-router.post('/', createStudent);
-router.put('/:id', updateStudent);
-router.delete('/:id', deleteStudent);
+// --- Student Management (Restricted to ADMIN/HR/STUDY_OFFICE) ---
+router.get('/', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), getStudents);
+router.post('/', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), createStudent);
+router.put('/:id', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), updateStudent);
+router.delete('/:id', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), deleteStudent);
 
 export default router;

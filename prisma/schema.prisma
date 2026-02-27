@@ -70,7 +70,7 @@ model Attendance {
   id        String    @id @default(auto()) @map("_id") @db.ObjectId
   date      DateTime
   status    AttendanceStatus
-  student   User      @relation(fields: [studentId], references: [id])
+  student   User      @relation(fields: [studentId], references: [id], onDelete: Cascade)
   studentId String    @db.ObjectId
   group     Group     @relation(fields: [groupId], references: [id])
   groupId   String    @db.ObjectId
@@ -143,7 +143,7 @@ model AuditLog {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   action    String   // e.g., "USER_DEACTIVATED", "PASSWORD_RESET"
   actorId   String   @db.ObjectId
-  actor     User     @relation("ActorLogs", fields: [actorId], references: [id])
+  actor     User     @relation("ActorLogs", fields: [actorId], references: [id], onDelete: Cascade)
   target    String?  // e.g., "USER", "STUDENT"
   targetId  String?  // ID of the target entity
   details   String?  // JSON string or description
@@ -158,7 +158,7 @@ model StaffAttendance {
   status       AttendanceStatus
   lateMinutes  Int?
   note         String?
-  user         User      @relation(fields: [userId], references: [id])
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId       String    @db.ObjectId
 
   @@unique([date, userId], name: "staff_attendance_unique")
@@ -204,7 +204,7 @@ model LibraryResource {
   title           String
   author          String
   coverImage      String
-  uploadedBy      User    @relation("UploadedResources", fields: [uploadedById], references: [id])
+  uploadedBy      User    @relation("UploadedResources", fields: [uploadedById], references: [id], onDelete: Cascade)
   uploadedById    String  @db.ObjectId
   department      String?
   description     String?
@@ -293,7 +293,7 @@ model Announcement {
   course    Course   @relation(fields: [courseId], references: [id])
   courseId  String   @db.ObjectId
 
-  author    User     @relation("AnnouncementsCreated", fields: [authorId], references: [id])
+  author    User     @relation("AnnouncementsCreated", fields: [authorId], references: [id], onDelete: Cascade)
   authorId  String   @db.ObjectId
 }
 
@@ -344,7 +344,7 @@ model Assignment {
   maxPoints   Int?             @default(100)
   attachmentUrls String[]      // Links to files uploaded by teacher
 
-  teacher     User         @relation("AssignmentsCreated", fields: [teacherId], references: [id])
+  teacher     User         @relation("AssignmentsCreated", fields: [teacherId], references: [id], onDelete: Cascade)
   teacherId   String       @db.ObjectId
   
   group       Group        @relation(fields: [groupId], references: [id])
@@ -371,7 +371,7 @@ model Submission {
 
   assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
   assignmentId String     @db.ObjectId
-  student      User       @relation("SubmissionsMade", fields: [studentId], references: [id])
+  student      User       @relation("SubmissionsMade", fields: [studentId], references: [id], onDelete: Cascade)
   studentId    String     @db.ObjectId
 
   @@unique([assignmentId, studentId])
@@ -410,7 +410,7 @@ model Exam {
   maxScore    Int?      @default(100)
   attachmentUrls String[]      // Links to files uploaded by teacher
 
-  teacher     User             @relation("ExamsCreated", fields: [teacherId], references: [id])
+  teacher     User             @relation("ExamsCreated", fields: [teacherId], references: [id], onDelete: Cascade)
   teacherId   String           @db.ObjectId
   
   group       Group            @relation(fields: [groupId], references: [id])
@@ -435,7 +435,7 @@ model ExamSubmission {
 
   exam      Exam   @relation(fields: [examId], references: [id], onDelete: Cascade)
   examId    String @db.ObjectId
-  student   User   @relation("ExamSubmissionsMade", fields: [studentId], references: [id])
+  student   User   @relation("ExamSubmissionsMade", fields: [studentId], references: [id], onDelete: Cascade)
   studentId String @db.ObjectId
 
   @@unique([examId, studentId])
@@ -444,7 +444,7 @@ model ExamSubmission {
 model Enrollment {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
-  student   User   @relation(fields: [studentId], references: [id])
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   studentId String @db.ObjectId
 
   course   Course @relation(fields: [courseId], references: [id])
@@ -474,7 +474,7 @@ model Schedule {
   endDate     DateTime? 
   daysOfWeek  String[] 
 
-  creator     User      @relation("SchedulesCreated", fields: [creatorId], references: [id])
+  creator     User      @relation("SchedulesCreated", fields: [creatorId], references: [id], onDelete: Cascade)
   creatorId   String    @db.ObjectId
 
   assignedToTeacher   User?   @relation("SchedulesAssignedToTeacher", fields: [assignedToTeacherId], references: [id])
@@ -549,7 +549,7 @@ model JobApplication {
 model LeaveRequest {
   id          String      @id @default(auto()) @map("_id") @db.ObjectId
   userId      String      @db.ObjectId
-  user        User        @relation(fields: [userId], references: [id])
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   type        LeaveType
   startDate   DateTime
   endDate     DateTime
@@ -593,7 +593,7 @@ model Fee {
 
 model Invoice {
   id          String        @id @default(auto()) @map("_id") @db.ObjectId
-  student     User          @relation(fields: [studentId], references: [id])
+  student     User          @relation(fields: [studentId], references: [id], onDelete: Cascade)
   studentId   String        @db.ObjectId
   status      InvoiceStatus @default(DRAFT)
   issueDate   DateTime
@@ -656,7 +656,7 @@ model Notification {
 
 model UserBenefit {
   id            String   @id @default(auto()) @map("_id") @db.ObjectId
-  user          User     @relation(fields: [userId], references: [id])
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId        String   @unique @db.ObjectId
   baseSalary    Float    @default(0)
   bonus         Float    @default(0)
@@ -668,7 +668,7 @@ model UserBenefit {
 
 model Payroll {
   id            String   @id @default(auto()) @map("_id") @db.ObjectId
-  user          User     @relation(fields: [userId], references: [id])
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId        String   @db.ObjectId
   amount        Float
   bonus         Float    @default(0)

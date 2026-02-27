@@ -72,15 +72,99 @@ export const updateProgress = async (req: Request, res: Response) => {
 };
 
 export const getEnrollments = async (req: Request, res: Response) => {
-    try {
-        const { studentId } = req.query;
-        const enrollments = await prisma.enrollment.findMany({
-            where: { studentId: studentId as string },
-            include: { course: true }
-        });
-        res.json(enrollments);
-    } catch (error) {
-        console.error("Failed to fetch enrollments:", error);
-        res.status(500).json({ error: "Failed to fetch enrollments" });
+  try {
+    const { studentId, courseId } = req.query;
+    const where: any = {};
+    if (studentId) where.studentId = studentId as string;
+    if (courseId) where.courseId = courseId as string;
+
+    const enrollments = await prisma.enrollment.findMany({
+      where,
+      include: {
+        student: true,
+        course: true,
+        group: true,
+      } as any,
+      orderBy: { createdAt: 'desc' } as any
+    });
+    res.json(enrollments);
+  } catch (error) {
+    console.error("Failed to fetch enrollments:", error);
+    res.status(500).json({ error: "Failed to fetch enrollments" });
+  }
+};
+
+export const createEnrollment = async (req: Request, res: Response) => {
+  try {
+    const { studentId, courseId, groupId, semester, status } = req.body;
+
+    if (!studentId || !courseId) {
+      return res.status(400).json({ error: "studentId and courseId are required" });
     }
+
+    const enrollment = await prisma.enrollment.create({
+      data: {
+        studentId,
+        courseId,
+        groupId: groupId || undefined,
+        semester,
+        status: status || 'PENDING',
+      } as any,
+      include: {
+        student: true,
+        course: true,
+        group: true,
+      } as any
+    });
+
+    res.status(201).json(enrollment);
+  } catch (error: any) {
+    if (error.code === 'P2002') {
+      return res.status(400).json({ error: "Student is already enrolled in this course" });
+    }
+    console.error("Failed to create enrollment:", error);
+    res.status(500).json({ error: "Failed to create enrollment" });
+  }
+};
+
+export const updateEnrollment = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status, semester, groupId, progress } = req.body;
+
+    const updated = await prisma.enrollment.update({
+      where: { id: id as any },
+      data: {
+        status,
+        semester,
+        groupId: groupId !== undefined ? groupId : undefined,
+        progress,
+      } as any,
+      include: {
+        student: true,
+        course: true,
+        group: true,
+      } as any
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error("Failed to update enrollment:", error);
+    res.status(500).json({ error: "Failed to update enrollment" });
+  }
+};
+
+export const deleteEnrollment = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    await prisma.enrollment.delete({
+      where: { id: id as any }
+    });
+
+    res.json({ message: "Enrollment removed successfully" });
+  } catch (error) {
+    console.error("Failed to delete enrollment:", error);
+    res.status(500).json({ error: "Failed to delete enrollment" });
+  }
 };

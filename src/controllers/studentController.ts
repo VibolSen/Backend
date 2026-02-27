@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma';
+import bcrypt from 'bcrypt';
+import { generateStudentId } from '../utils/idGenerator';
 
 export const getStudentCourses = async (req: Request, res: Response) => {
   try {
@@ -215,20 +217,42 @@ export const getStudents = async (req: Request, res: Response) => {
 
 export const createStudent = async (req: Request, res: Response) => {
   try {
-    // Note: Converted to User creation. Ensure body contains email, password, firstName, lastName
-    // Original logic linked to an existing user via userId, but schema only has User.
-    // Assuming this endpoint now creates a new User with STUDENT role.
-    const { currentCourses, ...userData } = req.body;
+    const { 
+      email, password, firstName, lastName, 
+      gender, academicStatus, degreeType, academicLevel,
+      currentCourses, specialization, maxWorkload, departmentId 
+    } = req.body;
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password || '123456', 10);
+
+    const studentId = await generateStudentId();
 
     const newStudent = await prisma.user.create({
       data: {
-        ...userData,
+        email,
+        password: hashedPassword,
+        firstName,
+        lastName,
         role: 'STUDENT',
+        isActive: true,
+        departmentId: departmentId || undefined,
+        profile: {
+          create: {
+            gender: gender || 'Other',
+            studentId,
+            academicStatus: academicStatus || 'ACTIVE',
+            degreeType: degreeType || 'BACHELOR',
+            academicLevel: academicLevel || 'ENROLLMENT',
+            specialization: specialization || [],
+            maxWorkload: maxWorkload ? parseInt(maxWorkload) : undefined,
+          } as any
+        }
       },
+      include: { profile: true }
     });
 
     if (currentCourses && currentCourses.length > 0) {
-      // Create enrollments
       await prisma.enrollment.createMany({
         data: currentCourses.map((courseId: string) => ({
           studentId: newStudent.id,
@@ -238,7 +262,10 @@ export const createStudent = async (req: Request, res: Response) => {
     }
 
     res.status(201).json(newStudent);
-  } catch (error) {
+  } catch (error: any) {
+    if (error.code === 'P2002' && error.meta?.target?.includes('email')) {
+      return res.status(400).json({ error: "A user with this email already exists." });
+    }
     console.error("Error creating student:", error);
     res.status(500).json({ error: "Failed to create student" });
   }
@@ -247,7 +274,11 @@ export const createStudent = async (req: Request, res: Response) => {
 export const updateStudent = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { currentCourses, ...userData } = req.body;
+    const { 
+      email, firstName, lastName, isActive,
+      gender, academicStatus, degreeType, academicLevel,
+      currentCourses, specialization, maxWorkload, departmentId 
+    } = req.body;
 
     if (!id) {
       res.status(400).json({ error: "Student ID is required" });
@@ -256,7 +287,34 @@ export const updateStudent = async (req: Request, res: Response) => {
 
     const updatedStudent = await prisma.user.update({
       where: { id: String(id) },
-      data: userData,
+      data: {
+        email,
+        firstName,
+        lastName,
+        isActive,
+        departmentId: departmentId || undefined,
+        profile: {
+          upsert: {
+            create: {
+              gender: gender || 'Other',
+              academicStatus: academicStatus || 'ACTIVE',
+              degreeType: degreeType || 'BACHELOR',
+              academicLevel: academicLevel || 'ENROLLMENT',
+              specialization: specialization || [],
+              maxWorkload: maxWorkload ? parseInt(maxWorkload) : undefined,
+            } as any,
+            update: {
+              gender,
+              academicStatus,
+              degreeType,
+              academicLevel,
+              specialization,
+              maxWorkload: maxWorkload ? parseInt(maxWorkload) : undefined,
+            } as any
+          }
+        }
+      },
+      include: { profile: true }
     });
 
     if (currentCourses) {
@@ -277,7 +335,10 @@ export const updateStudent = async (req: Request, res: Response) => {
     }
 
     res.json(updatedStudent);
-  } catch (error) {
+  } catch (error: any) {
+    if (error.code === 'P2002' && error.meta?.target?.includes('email')) {
+      return res.status(400).json({ error: "A user with this email already exists." });
+    }
     console.error("Error updating student:", error);
     res.status(500).json({ error: "Failed to update student" });
   }

@@ -66,6 +66,21 @@ enum SessionStatus {
   RESCHEDULED
 }
 
+enum DegreeType {
+  BACHELOR
+  DIPLOMA
+  SHORT_COURSE
+  ASSOCIATE
+}
+
+enum AcademicLevel {
+  ENROLLMENT
+  YEAR_1
+  YEAR_2
+  YEAR_3
+  YEAR_4
+}
+
 model Attendance {
   id        String    @id @default(auto()) @map("_id") @db.ObjectId
   date      DateTime
@@ -175,6 +190,8 @@ model Profile {
   
   // Academic Status
   academicStatus   AcademicStatus @default(ACTIVE)
+  degreeType       DegreeType?    @default(BACHELOR)
+  academicLevel    AcademicLevel? @default(ENROLLMENT)
   
   // Emergency Contact
   emergencyContactName     String?
@@ -314,6 +331,15 @@ model Group {
   exams       Exam[]
   attendances Attendance[]
   schedules   Schedule[] @relation("SchedulesAssignedToGroup")
+  enrollments Enrollment[]
+}
+
+enum EnrollmentStatus {
+  PENDING
+  APPROVED
+  ENROLLED
+  IN_PROGRESS
+  DROPPED
 }
 
 enum AssignmentType {
@@ -450,7 +476,15 @@ model Enrollment {
   course   Course @relation(fields: [courseId], references: [id])
   courseId String @db.ObjectId
 
-  progress Int @default(0) // 0–100 percentage
+  group     Group?   @relation(fields: [groupId], references: [id])
+  groupId   String?  @db.ObjectId
+
+  status    EnrollmentStatus @default(PENDING)
+  semester  String?
+  progress  Int              @default(0) // 0–100 percentage
+  
+  createdAt DateTime? @default(now())
+  updatedAt DateTime? @updatedAt
 
   @@unique([studentId, courseId])
 }

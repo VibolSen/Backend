@@ -65,7 +65,17 @@ export const getUsers = async (req: AuthRequest, res: Response) => {
 
 export const createUser = async (req: AuthRequest, res: Response) => {
   try {
-    const { email, password, firstName, lastName, role, gender } = req.body;
+    const { 
+      email, password, firstName, lastName, role, gender, 
+      academicStatus, degreeType, academicLevel,
+      emergencyContactName, emergencyContactPhone, emergencyContactRelation,
+      specialization, maxWorkload, departmentId 
+    } = req.body;
+
+    // STUDY_OFFICE can only create STUDENT accounts
+    if (req.user?.role === 'STUDY_OFFICE' && role !== 'STUDENT') {
+      return res.status(403).json({ error: "Study Office can only create student accounts." });
+    }
     
     if (/\d/.test(firstName) || /\d/.test(lastName)) {
       return res.status(400).json({ error: "Names cannot contain numbers" });
@@ -87,12 +97,19 @@ export const createUser = async (req: AuthRequest, res: Response) => {
         lastName,
         role: role || 'STUDENT',
         isActive: true,
+        departmentId: departmentId || undefined,
         profile: {
           create: {
             gender: gender || 'Other',
             studentId,
-            specialization: req.body.specialization || [],
-            maxWorkload: req.body.maxWorkload ? parseInt(req.body.maxWorkload) : undefined,
+            academicStatus: academicStatus || 'ACTIVE',
+            degreeType: degreeType || 'BACHELOR',
+            academicLevel: academicLevel || 'ENROLLMENT',
+            emergencyContactName,
+            emergencyContactPhone,
+            emergencyContactRelation,
+            specialization: specialization || [],
+            maxWorkload: maxWorkload ? parseInt(maxWorkload) : undefined,
           } as any
         }
       },
@@ -104,7 +121,10 @@ export const createUser = async (req: AuthRequest, res: Response) => {
       await logAudit(req.user.userId, "USER_CREATED", "USER", newUser.id, { email, role });
     }
     res.status(201).json(newUser);
-  } catch (error) {
+  } catch (error: any) {
+    if (error.code === 'P2002' && error.meta?.target?.includes('email')) {
+      return res.status(400).json({ error: "A user with this email already exists." });
+    }
     console.error("Failed to create user:", error);
     res.status(500).json({ error: "Failed to create user" });
   }
@@ -192,7 +212,12 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
 export const updateUser = async (req: AuthRequest, res: Response) => {
   try {
     const id = (req.query.id as string) || req.params.id;
-    const { email, firstName, lastName, role, isActive, specialization, maxWorkload } = req.body;
+    const { 
+      email, firstName, lastName, role, isActive, 
+      gender, academicStatus, degreeType, academicLevel,
+      emergencyContactName, emergencyContactPhone, emergencyContactRelation,
+      specialization, maxWorkload, departmentId 
+    } = req.body;
 
     if (firstName && /\d/.test(firstName)) return res.status(400).json({ error: "First name cannot contain numbers" });
     if (lastName && /\d/.test(lastName)) return res.status(400).json({ error: "Last name cannot contain numbers" });
@@ -205,6 +230,13 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
     });
 
     if (!currentUserData) return res.status(404).json({ error: "User not found" });
+
+    // STUDY_OFFICE can only update STUDENT accounts
+    if (req.user?.role === 'STUDY_OFFICE') {
+      if (currentUserData.role !== 'STUDENT' || (role && role !== 'STUDENT')) {
+        return res.status(403).json({ error: "Study Office can only manage student accounts." });
+      }
+    }
 
     let studentId = (currentUserData.profile as any)?.studentId;
     
@@ -221,15 +253,30 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
         lastName,
         role,
         isActive: isActive !== undefined ? isActive : undefined,
+        departmentId: departmentId !== undefined ? departmentId : undefined,
         profile: {
           upsert: {
             create: { 
               studentId,
+              gender: gender || 'Other',
+              academicStatus: academicStatus || 'ACTIVE',
+              degreeType: degreeType || 'BACHELOR',
+              academicLevel: academicLevel || 'ENROLLMENT',
+              emergencyContactName,
+              emergencyContactPhone,
+              emergencyContactRelation,
               specialization: specialization || [],
               maxWorkload: maxWorkload ? parseInt(maxWorkload) : undefined
             } as any,
             update: { 
               studentId,
+              gender,
+              academicStatus,
+              degreeType,
+              academicLevel,
+              emergencyContactName,
+              emergencyContactPhone,
+              emergencyContactRelation,
               specialization: specialization || undefined,
               maxWorkload: maxWorkload ? parseInt(maxWorkload) : undefined
             } as any
@@ -248,7 +295,10 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
     }
 
     res.json(updatedUser);
-  } catch (error) {
+  } catch (error: any) {
+    if (error.code === 'P2002' && error.meta?.target?.includes('email')) {
+      return res.status(400).json({ error: "A user with this email already exists." });
+    }
     console.error("Failed to update user:", error);
     res.status(500).json({ error: "Failed to update user" });
   }
@@ -258,6 +308,15 @@ export const adminResetPassword = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { newPassword } = req.body;
+
+    // STUDY_OFFICE can only reset passwords for STUDENT accounts
+    if (req.user?.role === 'STUDY_OFFICE') {
+      const targetUser = await prisma.user.findUnique({ where: { id: String(id) }, select: { role: true } });
+      if (!targetUser) return res.status(404).json({ error: "User not found" });
+      if (targetUser.role !== 'STUDENT') {
+        return res.status(403).json({ error: "Study Office can only reset passwords for student accounts." });
+      }
+    }
 
     if (!newPassword) return res.status(400).json({ error: "New password is required" });
 
@@ -313,6 +372,19 @@ export const deleteUser = async (req: AuthRequest, res: Response) => {
   try {
     const id = (req.query.id as string) || req.params.id;
     if (!id) return res.status(400).json({ error: "User ID is required" });
+
+    const targetUser = await prisma.user.findUnique({ where: { id: String(id) }, select: { role: true } });
+    if (!targetUser) return res.status(404).json({ error: "User not found" });
+
+    // STUDY_OFFICE can only delete STUDENT accounts
+    if (req.user?.role === 'STUDY_OFFICE' && targetUser.role !== 'STUDENT') {
+      return res.status(403).json({ error: "Study Office can only delete student accounts." });
+    }
+
+    // HR cannot delete ADMIN accounts
+    if (req.user?.role === 'HR' && targetUser.role === 'ADMIN') {
+      return res.status(403).json({ error: "HR cannot delete administrator accounts." });
+    }
 
     await prisma.user.delete({
       where: { id: String(id) },

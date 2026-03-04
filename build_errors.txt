@@ -1,0 +1,9 @@
+src/controllers/attendanceController.ts(353,26): error TS2345: Argument of type '{ id: string; studentId: string; status: AttendanceStatus; groupId: string; date: Date; }' is not assignable to parameter of type 'never'.
+src/controllers/dashboardController.ts(156,40): error TS2345: Argument of type '{ sessionId: string; groupName: string; groupId: string; courseName: string; startTime: Date; }' is not assignable to parameter of type 'never'.
+src/controllers/financialController.ts(773,36): error TS2345: Argument of type 'any' is not assignable to parameter of type 'never'.
+src/controllers/financialController.ts(915,32): error TS2345: Argument of type '{ id: string; title: string; type: string; link: string | null; userId: string; message: string; isRead: boolean; createdAt: Date; }' is not assignable to parameter of type 'never'.
+src/controllers/profileController.ts(27,9): error TS2322: Type 'string' is not assignable to type 'undefined'.
+src/controllers/profileController.ts(60,9): error TS2698: Spread types may only be created from object types.
+src/controllers/userController.ts(79,7): error TS2322: Type 'string' is not assignable to type 'undefined'.
+src/controllers/userController.ts(346,9): error TS2322: Type 'string' is not assignable to type 'undefined'.
+src/controllers/userController.ts(367,25): error TS2345: Argument of type '{ id: string; firstName: string; lastName: string; email: string; password: string; role: Role; isActive: boolean; lastLogin: Date | null; departmentId: string | null; groupIds: string[]; }' is not assignable to parameter of type 'never'.

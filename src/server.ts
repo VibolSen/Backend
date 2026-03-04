@@ -205,7 +205,7 @@ app.use((err: any, req: any, res: any, next: any) => {
 app.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`Server is running on http://localhost:${PORT}`);
   console.log(`Swagger Docs available at http://localhost:${PORT}/api-docs`);
-  
+
   // Start Background Jobs
   startCronJobs();
   // Server updated to include Leave Management routes (restored includes)

@@ -13,7 +13,8 @@ const authorizedRoles = authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE');
  *   description: Department management API
  */
 
-router.get('/', authenticateToken, authorizedRoles, getDepartments);
+router.get('/', getDepartments);
+
 router.post('/', authenticateToken, authorizedRoles, createDepartment);
 router.put('/:id', authenticateToken, authorizedRoles, updateDepartment);
 router.delete('/:id', authenticateToken, authorizeRoles('ADMIN', 'HR'), deleteDepartment);

@@ -205,8 +205,12 @@ export const getStudents = async (req: Request, res: Response) => {
         enrollments: {
           include: { course: true }
         },
-        profile: true
+        profile: true,
+        department: {
+          include: { faculty: true }
+        }
       },
+      orderBy: { lastName: 'asc' }
     });
     res.json(students || []);
   } catch (err) {

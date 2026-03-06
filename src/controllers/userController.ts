@@ -35,7 +35,7 @@ export const getUsers = async (req: AuthRequest, res: Response) => {
   try {
     const { role, status } = req.query;
     const where: any = {};
-    
+
     if (role) {
       where.role = role;
     } else if (req.query.roleType === 'nonStudent') {
@@ -66,11 +66,11 @@ export const getUsers = async (req: AuthRequest, res: Response) => {
 export const createUser = async (req: AuthRequest, res: Response) => {
   try {
     const { email, password, firstName, lastName, role, gender } = req.body;
-    
+
     if (/\d/.test(firstName) || /\d/.test(lastName)) {
       return res.status(400).json({ error: "Names cannot contain numbers" });
     }
-    
+
     // Hash password
     const hashedPassword = await bcrypt.hash(password || '123456', 10);
 
@@ -93,6 +93,8 @@ export const createUser = async (req: AuthRequest, res: Response) => {
             studentId,
             specialization: req.body.specialization || [],
             maxWorkload: req.body.maxWorkload ? parseInt(req.body.maxWorkload) : undefined,
+            academicYear: req.body.academicYear ? parseInt(req.body.academicYear) : undefined,
+            generation: req.body.generation,
           } as any
         }
       },
@@ -113,7 +115,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
 export const getProfile = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    
+
     // IDOR Protection: Only self, ADMIN, or HR can view a profile
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
     if (req.user.role !== 'ADMIN' && req.user.role !== 'HR' && req.user.userId !== id) {
@@ -144,12 +146,12 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
       return res.status(403).json({ error: "Access denied. You can only update your own profile." });
     }
 
-    const { 
+    const {
       bio, avatar, address, phone, dateOfBirth, gender,
       academicStatus, emergencyContactName, emergencyContactPhone, emergencyContactRelation,
       specialization, maxWorkload
     } = req.body;
-    
+
     const profile = await prisma.profile.upsert({
       where: { userId: String(id) },
       update: {
@@ -207,7 +209,7 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
     if (!currentUserData) return res.status(404).json({ error: "User not found" });
 
     let studentId = (currentUserData.profile as any)?.studentId;
-    
+
     // If migrating TO Student and doesn't have an ID yet
     if (role === 'STUDENT' && !studentId) {
       studentId = await generateStudentId();
@@ -223,15 +225,19 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
         isActive: isActive !== undefined ? isActive : undefined,
         profile: {
           upsert: {
-            create: { 
+            create: {
               studentId,
               specialization: specialization || [],
-              maxWorkload: maxWorkload ? parseInt(maxWorkload) : undefined
+              maxWorkload: maxWorkload ? parseInt(maxWorkload) : undefined,
+              academicYear: req.body.academicYear ? parseInt(req.body.academicYear) : undefined,
+              generation: req.body.generation,
             } as any,
-            update: { 
+            update: {
               studentId,
               specialization: specialization || undefined,
-              maxWorkload: maxWorkload ? parseInt(maxWorkload) : undefined
+              maxWorkload: maxWorkload ? parseInt(maxWorkload) : undefined,
+              academicYear: req.body.academicYear ? parseInt(req.body.academicYear) : undefined,
+              generation: req.body.generation,
             } as any
           }
         }
@@ -239,9 +245,9 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
     });
 
     if (req.user && role !== currentUserData.role) {
-      await logAudit(req.user.userId, "ROLE_MIGRATION", "USER", String(id), { 
-        from: currentUserData.role, 
-        to: role 
+      await logAudit(req.user.userId, "ROLE_MIGRATION", "USER", String(id), {
+        from: currentUserData.role,
+        to: role
       });
     } else if (req.user) {
       await logAudit(req.user.userId, "USER_UPDATED", "USER", String(id), { email, role, isActive });
@@ -329,7 +335,7 @@ export const deleteUser = async (req: AuthRequest, res: Response) => {
 
 export const bulkCreateUsers = async (req: AuthRequest, res: Response) => {
   try {
-    const { users } = req.body; 
+    const { users } = req.body;
 
     if (!Array.isArray(users)) {
       return res.status(400).json({ error: "Invalid data format. Expected an array of users." });
@@ -360,6 +366,8 @@ export const bulkCreateUsers = async (req: AuthRequest, res: Response) => {
               studentId,
               specialization: userData.specialization || [],
               maxWorkload: userData.maxWorkload ? parseInt(userData.maxWorkload) : undefined,
+              academicYear: userData.academicYear ? parseInt(userData.academicYear) : undefined,
+              generation: userData.generation,
             } as any
           }
         }
@@ -398,7 +406,7 @@ export const getAuditLogs = async (req: AuthRequest, res: Response) => {
       },
       take: 100
     });
-    
+
     // Fallback for missing actors to prevent frontend crashes
     const safeLogs = logs.map(log => ({
       ...log,
@@ -408,10 +416,10 @@ export const getAuditLogs = async (req: AuthRequest, res: Response) => {
     res.json(safeLogs);
   } catch (error: any) {
     console.error("Failed to fetch audit logs:", error);
-    res.status(500).json({ 
-      error: "Failed to fetch audit logs", 
+    res.status(500).json({
+      error: "Failed to fetch audit logs",
       message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined 
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 };

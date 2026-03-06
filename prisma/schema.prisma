@@ -191,6 +191,10 @@ model Profile {
   specialization String[] // e.g. ["Mathematics", "Physics"]
   maxWorkload    Int?     // e.g. 5 courses per semester
 
+  // Admin/University Fields
+  academicYear   Int?      @default(1) // Level 1, 2, 3, 4
+  generation     String?               // e.g. "Batch 12"
+
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String   @unique @db.ObjectId
 }

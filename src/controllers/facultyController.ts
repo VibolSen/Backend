@@ -7,12 +7,12 @@ export const getFaculties = async (req: Request, res: Response) => {
       include: {
         departments: true,
         head: {
-            select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-            }
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          }
         }
       },
       orderBy: { name: 'asc' },
@@ -23,6 +23,56 @@ export const getFaculties = async (req: Request, res: Response) => {
     res.status(500).json({ error: "Failed to fetch faculties" });
   }
 };
+
+export const getFacultyById = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const faculty = await prisma.faculty.findUnique({
+      where: { id: String(id) },
+      include: {
+        head: {
+          select: { id: true, firstName: true, lastName: true, email: true, role: true }
+        },
+        departments: {
+          include: {
+            head: {
+              select: { id: true, firstName: true, lastName: true }
+            },
+            users: {
+              where: { role: 'STUDENT' },
+              include: { profile: true },
+              orderBy: { lastName: 'asc' }
+            },
+            departmentCourses: {
+              include: {
+                course: {
+                  include: {
+                    leadBy: { select: { id: true, firstName: true, lastName: true } },
+                    _count: { select: { enrollments: true, groups: true } }
+                  }
+                }
+              }
+            },
+            _count: {
+              select: { users: true, departmentCourses: true }
+            }
+          }
+        }
+      }
+    });
+
+    if (!faculty) {
+      return res.status(404).json({ error: 'Faculty not found' });
+    }
+
+    res.json(faculty);
+  } catch (err) {
+    console.error("Failed to fetch faculty detail:", err);
+    res.status(500).json({ error: "Failed to fetch faculty detail" });
+  }
+};
+
 
 export const createFaculty = async (req: Request, res: Response) => {
   try {

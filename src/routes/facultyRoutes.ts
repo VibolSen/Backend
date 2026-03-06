@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getFaculties, createFaculty, updateFaculty, deleteFaculty } from '../controllers/facultyController';
+import { getFaculties, createFaculty, updateFaculty, deleteFaculty, getFacultyById } from '../controllers/facultyController';
 import { authenticateToken, authorizeRoles } from '../middleware/auth';
 
 const router = Router();
@@ -14,6 +14,7 @@ const authorizedRoles = authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE');
  */
 
 router.get('/', getFaculties);
+router.get('/:id', getFacultyById);
 
 router.post('/', authenticateToken, authorizedRoles, createFaculty);
 router.put('/:id', authenticateToken, authorizedRoles, updateFaculty);

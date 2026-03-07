@@ -193,7 +193,10 @@ model Profile {
 
   // Admin/University Fields
   academicYear   Int?      @default(1) // Level 1, 2, 3, 4
-  generation     String?               // e.g. "Batch 12"
+  semester       Int?      @default(1) // Semester 1, 2
+  generation     String?               // e.g. "G1" (Keep for display)
+  batch          Batch?    @relation(fields: [batchId], references: [id])
+  batchId        String?   @db.ObjectId
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String   @unique @db.ObjectId
@@ -230,6 +233,19 @@ model Department {
   faculty   Faculty? @relation(fields: [facultyId], references: [id])
   facultyId String?  @db.ObjectId
   budgets   Budget[]
+  batches   Batch[]
+}
+
+model Batch {
+  id           String     @id @default(auto()) @map("_id") @db.ObjectId
+  name         String     // e.g. "G1"
+  startDate    DateTime?
+  endDate      DateTime?
+  status       String?    @default("ACTIVE")
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  departmentId String     @db.ObjectId
+  profiles     Profile[]
+  createdAt    DateTime   @default(now())
 }
 
 model Faculty {

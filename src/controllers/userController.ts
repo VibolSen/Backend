@@ -6,13 +6,47 @@ import { logAudit } from '../utils/audit';
 import { generateStudentId } from '../utils/idGenerator';
 import { authenticateToken } from '../middleware/auth';
 
+const getOrCreateBatchId = async (generation: string | undefined, departmentId: string | undefined) => {
+  if (!generation || !departmentId) return undefined;
+
+  // Check if batch exists (smart search)
+  try {
+    let batch = await prisma.batch.findFirst({
+      where: {
+        name: { equals: generation, mode: 'insensitive' },
+        departmentId: String(departmentId)
+      }
+    });
+
+    // If not, create it automatically
+    if (!batch) {
+      batch = await prisma.batch.create({
+        data: {
+          name: generation,
+          departmentId: String(departmentId),
+          status: 'ACTIVE'
+        }
+      });
+    }
+
+    return batch.id;
+  } catch (err) {
+    console.error("Smart batch creation failed:", err);
+    return undefined;
+  }
+};
+
 export const getUser = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const user = await prisma.user.findUnique({
       where: { id: String(id) },
       include: {
-        profile: true,
+        profile: {
+          include: {
+            batch: true
+          }
+        },
         department: true,
         _count: {
           select: { ledCourses: true }
@@ -48,7 +82,11 @@ export const getUsers = async (req: AuthRequest, res: Response) => {
     const users = await prisma.user.findMany({
       where,
       include: {
-        profile: true,
+        profile: {
+          include: {
+            batch: true
+          }
+        },
         department: true,
         _count: {
           select: { ledCourses: true }
@@ -65,10 +103,17 @@ export const getUsers = async (req: AuthRequest, res: Response) => {
 
 export const createUser = async (req: AuthRequest, res: Response) => {
   try {
-    const { email, password, firstName, lastName, role, gender } = req.body;
+    const { email, password, firstName, lastName, role, gender, departmentId } = req.body;
+    let { batchId, generation } = req.body;
 
     if (/\d/.test(firstName) || /\d/.test(lastName)) {
       return res.status(400).json({ error: "Names cannot contain numbers" });
+    }
+
+    // Smart Batch Logic
+    if ((batchId === 'CUSTOM_ENTRY' || !batchId) && generation && departmentId) {
+      const bId = await getOrCreateBatchId(generation, departmentId);
+      if (bId) batchId = bId;
     }
 
     // Hash password
@@ -87,6 +132,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
         lastName,
         role: role || 'STUDENT',
         isActive: true,
+        departmentId: departmentId ? String(departmentId) : undefined,
         profile: {
           create: {
             gender: gender || 'Other',
@@ -94,7 +140,9 @@ export const createUser = async (req: AuthRequest, res: Response) => {
             specialization: req.body.specialization || [],
             maxWorkload: req.body.maxWorkload ? parseInt(req.body.maxWorkload) : undefined,
             academicYear: req.body.academicYear ? parseInt(req.body.academicYear) : undefined,
-            generation: req.body.generation,
+            semester: req.body.semester ? parseInt(req.body.semester) : undefined,
+            generation: generation,
+            batchId: batchId && batchId !== 'CUSTOM_ENTRY' ? batchId : undefined,
           } as any
         }
       },
@@ -194,12 +242,19 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
 export const updateUser = async (req: AuthRequest, res: Response) => {
   try {
     const id = (req.query.id as string) || req.params.id;
-    const { email, firstName, lastName, role, isActive, specialization, maxWorkload } = req.body;
+    const { email, firstName, lastName, role, isActive, specialization, maxWorkload, departmentId } = req.body;
+    let { batchId, generation } = req.body;
 
     if (firstName && /\d/.test(firstName)) return res.status(400).json({ error: "First name cannot contain numbers" });
     if (lastName && /\d/.test(lastName)) return res.status(400).json({ error: "Last name cannot contain numbers" });
 
     if (!id) return res.status(400).json({ error: "User ID is required" });
+
+    // Smart Batch Logic
+    if ((batchId === 'CUSTOM_ENTRY' || !batchId) && generation && departmentId) {
+      const bId = await getOrCreateBatchId(generation, departmentId);
+      if (bId) batchId = bId;
+    }
 
     const currentUserData = await prisma.user.findUnique({
       where: { id: String(id) },
@@ -223,6 +278,7 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
         lastName,
         role,
         isActive: isActive !== undefined ? isActive : undefined,
+        departmentId: departmentId ? String(departmentId) : undefined,
         profile: {
           upsert: {
             create: {
@@ -230,14 +286,18 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
               specialization: specialization || [],
               maxWorkload: maxWorkload ? parseInt(maxWorkload) : undefined,
               academicYear: req.body.academicYear ? parseInt(req.body.academicYear) : undefined,
-              generation: req.body.generation,
+              semester: req.body.semester ? parseInt(req.body.semester) : undefined,
+              generation: generation,
+              batchId: batchId && batchId !== 'CUSTOM_ENTRY' ? batchId : undefined,
             } as any,
             update: {
               studentId,
               specialization: specialization || undefined,
               maxWorkload: maxWorkload ? parseInt(maxWorkload) : undefined,
               academicYear: req.body.academicYear ? parseInt(req.body.academicYear) : undefined,
-              generation: req.body.generation,
+              semester: req.body.semester ? parseInt(req.body.semester) : undefined,
+              generation: generation,
+              batchId: batchId && batchId !== 'CUSTOM_ENTRY' ? batchId : undefined,
             } as any
           }
         }
@@ -343,7 +403,15 @@ export const bulkCreateUsers = async (req: AuthRequest, res: Response) => {
 
     const createdUsers = [];
     for (const userData of users) {
-      const { email, password, firstName, lastName, role, gender, academicStatus } = userData;
+      const { email, password, firstName, lastName, role, gender, academicStatus, departmentId } = userData;
+      let { batchId, generation } = userData;
+
+      // Smart Batch Logic
+      if ((batchId === 'CUSTOM_ENTRY' || !batchId) && generation && departmentId) {
+        const bId = await getOrCreateBatchId(generation, departmentId);
+        if (bId) batchId = bId;
+      }
+
       const hashedPassword = await bcrypt.hash(password || 'password123', 10);
 
       let studentId = undefined;
@@ -359,6 +427,7 @@ export const bulkCreateUsers = async (req: AuthRequest, res: Response) => {
           firstName,
           lastName,
           role: userRole,
+          departmentId: departmentId ? String(departmentId) : undefined,
           profile: {
             create: {
               gender: gender || 'Other',
@@ -367,7 +436,9 @@ export const bulkCreateUsers = async (req: AuthRequest, res: Response) => {
               specialization: userData.specialization || [],
               maxWorkload: userData.maxWorkload ? parseInt(userData.maxWorkload) : undefined,
               academicYear: userData.academicYear ? parseInt(userData.academicYear) : undefined,
-              generation: userData.generation,
+              semester: userData.semester ? parseInt(userData.semester) : undefined,
+              generation: generation,
+              batchId: batchId && batchId !== 'CUSTOM_ENTRY' ? batchId : undefined,
             } as any
           }
         }
@@ -383,6 +454,32 @@ export const bulkCreateUsers = async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error("Failed to bulk create users:", error);
     res.status(500).json({ error: "Failed to bulk create users" });
+  }
+};
+
+export const bulkDeleteUsers = async (req: AuthRequest, res: Response) => {
+  try {
+    const { ids } = req.body;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: "Invalid data format. Expected an array of user IDs." });
+    }
+
+    // STUDY_OFFICE check (if needed, but usually ADMIN deletes)
+    // For now, let's keep it simple for ADMIN as per userRoutes
+
+    await prisma.user.deleteMany({
+      where: { id: { in: ids } },
+    });
+
+    if (req.user) {
+      await logAudit(req.user.userId, "BULK_USER_DEletion", "USER", "MULTIPLE", { count: ids.length });
+    }
+
+    res.json({ success: true, message: `Successfully deleted ${ids.length} users.` });
+  } catch (error) {
+    console.error("Failed to bulk delete users:", error);
+    res.status(500).json({ error: "Failed to bulk delete users" });
   }
 };
 

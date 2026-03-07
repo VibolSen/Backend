@@ -40,6 +40,7 @@ import hrRoutes from './routes/hrRoutes';
 import careersRoutes from './routes/careersRoutes';
 import notificationRoutes from './routes/notificationRoutes';
 import leaveRoutes from './routes/leaveRoutes';
+import batchRoutes from './routes/batchRoutes';
 import prisma from './prisma';
 import { startCronJobs } from './services/cronService';
 
@@ -178,6 +179,7 @@ app.use('/api/hr', hrRoutes);
 app.use('/api/careers', careersRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/leaves', leaveRoutes);
+app.use('/api/batches', batchRoutes);
 app.get('/api/course-analytics', getCourseAnalytics);
 
 app.get('/', (req, res) => {

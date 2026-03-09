@@ -6,14 +6,6 @@ export const getFaculties = async (req: Request, res: Response) => {
     const faculties = await prisma.faculty.findMany({
       include: {
         departments: true,
-        head: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          }
-        }
       },
       orderBy: { name: 'asc' },
     });
@@ -31,14 +23,8 @@ export const getFacultyById = async (req: Request, res: Response) => {
     const faculty = await prisma.faculty.findUnique({
       where: { id: String(id) },
       include: {
-        head: {
-          select: { id: true, firstName: true, lastName: true, email: true, role: true }
-        },
         departments: {
           include: {
-            head: {
-              select: { id: true, firstName: true, lastName: true }
-            },
             users: {
               where: { role: 'STUDENT' },
               include: { profile: true },
@@ -76,7 +62,7 @@ export const getFacultyById = async (req: Request, res: Response) => {
 
 export const createFaculty = async (req: Request, res: Response) => {
   try {
-    const { name, headId } = req.body;
+    const { name } = req.body;
 
     if (!name) {
       res.status(400).json({ error: 'Name is required' });
@@ -86,7 +72,6 @@ export const createFaculty = async (req: Request, res: Response) => {
     const newFaculty = await prisma.faculty.create({
       data: {
         name,
-        headId: headId || undefined,
       },
     });
 
@@ -100,13 +85,12 @@ export const createFaculty = async (req: Request, res: Response) => {
 export const updateFaculty = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, headId } = req.body;
+    const { name } = req.body;
 
     const updatedFaculty = await prisma.faculty.update({
       where: { id: String(id) },
       data: {
         name,
-        headId: headId || null // Use null to explicitly clear the head
       },
     });
 

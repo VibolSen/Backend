@@ -48,9 +48,6 @@ export const getUser = async (req: AuthRequest, res: Response) => {
           }
         },
         department: true,
-        _count: {
-          select: { ledCourses: true }
-        }
       }
     });
 
@@ -88,9 +85,6 @@ export const getUsers = async (req: AuthRequest, res: Response) => {
           }
         },
         department: true,
-        _count: {
-          select: { ledCourses: true }
-        }
       },
       orderBy: { lastName: 'asc' }
     });

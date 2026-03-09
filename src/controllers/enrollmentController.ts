@@ -19,8 +19,8 @@ async function calculateCourseProgress(studentId: string, courseId: string) {
   const assignments = course.groups.flatMap((g) => g.assignments);
   const exams = course.groups.flatMap((g) => g.exams);
 
-  const totalPossiblePoints = 
-    assignments.reduce((sum, a: any) => sum + (a.maxPoints || a.points || 100), 0) + 
+  const totalPossiblePoints =
+    assignments.reduce((sum, a: any) => sum + (a.maxPoints || a.points || 100), 0) +
     exams.reduce((sum, e: any) => sum + (e.maxScore || 100), 0);
 
   if (totalPossiblePoints === 0) return 0;
@@ -41,8 +41,8 @@ async function calculateCourseProgress(studentId: string, courseId: string) {
     },
   });
 
-  const earnedPoints = 
-    studentSubmissions.reduce((sum, s) => sum + (s.grade || 0), 0) + 
+  const earnedPoints =
+    studentSubmissions.reduce((sum, s) => sum + (s.grade || 0), 0) +
     studentExamSubmissions.reduce((sum, s) => sum + (s.grade || 0), 0);
 
   const progress = (earnedPoints / totalPossiblePoints) * 100;
@@ -72,15 +72,56 @@ export const updateProgress = async (req: Request, res: Response) => {
 };
 
 export const getEnrollments = async (req: Request, res: Response) => {
-    try {
-        const { studentId } = req.query;
-        const enrollments = await prisma.enrollment.findMany({
-            where: { studentId: studentId as string },
-            include: { course: true }
-        });
-        res.json(enrollments);
-    } catch (error) {
-        console.error("Failed to fetch enrollments:", error);
-        res.status(500).json({ error: "Failed to fetch enrollments" });
-    }
+  try {
+    const { studentId } = req.query;
+    const enrollments = await prisma.enrollment.findMany({
+      where: studentId ? { studentId: studentId as string } : {},
+      include: {
+        student: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          }
+        },
+        course: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            credits: true,
+          }
+        }
+      },
+      orderBy: { id: 'desc' }
+    });
+    res.json(enrollments);
+  } catch (error) {
+    console.error("Failed to fetch enrollments:", error);
+    res.status(500).json({ error: "Failed to fetch enrollments" });
+  }
+};
+
+export const createEnrollment = async (req: Request, res: Response) => {
+  try {
+    const { studentId, courseId, progress = 0 } = req.body;
+
+    const enrollment = await prisma.enrollment.upsert({
+      where: {
+        studentId_courseId: { studentId, courseId }
+      },
+      update: { progress },
+      create: { studentId, courseId, progress },
+      include: {
+        student: true,
+        course: true
+      }
+    });
+
+    res.json(enrollment);
+  } catch (error) {
+    console.error("Save enrollment error:", error);
+    res.status(500).json({ error: "Failed to save enrollment" });
+  }
 };

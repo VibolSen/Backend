@@ -13,11 +13,6 @@ export const getTeachers = async (req: Request, res: Response) => {
         role: true,
         isActive: true,
         profile: true,
-        _count: {
-            select: {
-              ledCourses: true,
-            },
-        },
       },
       orderBy: { firstName: "asc" },
     });
@@ -78,12 +73,12 @@ export const getTeacherCourses = async (req: Request, res: Response) => {
     const formattedCourses = courses.map(course => {
       // Collect unique student IDs from both enrollments and groups
       const studentIdSet = new Set<string>();
-      
+
       // Add students from enrollments
       course.enrollments.forEach(enrollment => {
         studentIdSet.add(enrollment.studentId);
       });
-      
+
       // Add students from groups
       course.groups.forEach(group => {
         group.studentIds.forEach(studentId => {
@@ -116,7 +111,7 @@ export const createTeacher = async (req: Request, res: Response) => {
     }
 
     // TODO: Hash password here using bcrypt when auth is fully migrated
-    const hashedPassword = password; 
+    const hashedPassword = password;
 
     const newTeacher = await prisma.user.create({
       data: {
@@ -143,29 +138,29 @@ export const createTeacher = async (req: Request, res: Response) => {
 };
 
 export const getTeacherById = async (req: Request, res: Response) => {
-    try {
-        const { id } = req.params;
-        const teacher = await prisma.user.findUnique({
-          where: { id: String(id), role: 'TEACHER' },
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            role: true,
-          },
-        });
-    
-        if (!teacher) {
-          res.status(404).json({ message: 'Teacher not found' });
-          return;
-        }
-    
-        res.json(teacher);
-      } catch (error) {
-        console.error('Error fetching teacher:', error);
-        res.status(500).json({ error: 'Internal Server Error' });
-      }
+  try {
+    const { id } = req.params;
+    const teacher = await prisma.user.findUnique({
+      where: { id: String(id), role: 'TEACHER' },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        role: true,
+      },
+    });
+
+    if (!teacher) {
+      res.status(404).json({ message: 'Teacher not found' });
+      return;
+    }
+
+    res.json(teacher);
+  } catch (error) {
+    console.error('Error fetching teacher:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 };
 
 
@@ -242,15 +237,6 @@ export const getMyStudents = async (req: Request, res: Response) => {
       },
     });
 
-    // 2. Find groups where the teacher is the monitor
-    const monitoredGroups = await prisma.group.findMany({
-      where: { monitorId: teacherIdStr },
-      include: {
-        students: {
-          select: { id: true, firstName: true, lastName: true, email: true, role: true },
-        },
-      },
-    });
 
     // 3. Find groups assigned to this teacher in the schedule
     const scheduledSchedules = await prisma.schedule.findMany({
@@ -268,7 +254,7 @@ export const getMyStudents = async (req: Request, res: Response) => {
 
     // Use a Map to get unique students
     const studentMap = new Map();
-    
+
     // Add students from led courses
     ledCourses.forEach((course) => {
       course.enrollments.forEach((enrollment) => {
@@ -279,10 +265,6 @@ export const getMyStudents = async (req: Request, res: Response) => {
       });
     });
 
-    // Add students from monitored groups
-    monitoredGroups.forEach((group) => {
-      group.students.forEach((s) => studentMap.set(s.id, s));
-    });
 
     // Add students from schedules
     scheduledSchedules.forEach((schedule) => {
@@ -352,7 +334,7 @@ export const getMyGroups = async (req: Request, res: Response) => {
 
     // Flatten and deduplicate groups
     const groupMap = new Map();
-    
+
     // Add groups from led courses
     ledCourses.forEach((course) => {
       course.groups.forEach((group) => {

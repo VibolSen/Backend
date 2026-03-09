@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { updateProgress, getEnrollments } from '../controllers/enrollmentController';
+import { updateProgress, getEnrollments, createEnrollment } from '../controllers/enrollmentController';
 
 const router = Router();
 
@@ -48,5 +48,6 @@ router.post('/progress', updateProgress);
  *         description: List of enrollments
  */
 router.get('/', getEnrollments);
+router.post('/', createEnrollment);
 
 export default router;

@@ -7,14 +7,6 @@ export const getDepartments = async (req: Request, res: Response) => {
       include: {
         faculty: true,
         batches: true,
-        head: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          }
-        },
         _count: {
           select: {
             departmentCourses: true
@@ -38,14 +30,6 @@ export const getDepartmentById = async (req: Request, res: Response) => {
       include: {
         faculty: true,
         batches: true,
-        head: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          }
-        },
         users: { // Students in this department
           where: { role: 'STUDENT' }, // Only students
           include: {
@@ -96,7 +80,7 @@ export const getDepartmentById = async (req: Request, res: Response) => {
 
 export const createDepartment = async (req: Request, res: Response) => {
   try {
-    const { name, facultyId, headId, generations } = req.body;
+    const { name, facultyId, generations } = req.body;
 
     if (!name) {
       res.status(400).json({ error: 'Name is required' });
@@ -107,7 +91,6 @@ export const createDepartment = async (req: Request, res: Response) => {
       data: {
         name,
         facultyId,
-        headId: headId || undefined
       },
       include: { batches: true }
     });
@@ -122,14 +105,13 @@ export const createDepartment = async (req: Request, res: Response) => {
 export const updateDepartment = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, facultyId, headId, generations } = req.body;
+    const { name, facultyId, generations } = req.body;
 
     const updatedDepartment = await prisma.department.update({
       where: { id: String(id) },
       data: {
         name,
         facultyId,
-        headId: headId || null
       },
       include: { batches: true }
     });

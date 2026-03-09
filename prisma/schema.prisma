@@ -104,8 +104,6 @@ model User {
   groups           Group[]     @relation(fields: [groupIds], references: [id])
   groupIds         String[]    @db.ObjectId
   ledCourses       Course[]    @relation("CourseLead")
-  headedDepartments Department[] @relation("DepartmentHead")
-  headedFaculties   Faculty[]    @relation("FacultyHead") // New: User can head multiple faculties
 
   createdAssignments Assignment[] @relation("AssignmentsCreated")
   submissions        Submission[] @relation("SubmissionsMade")
@@ -134,7 +132,6 @@ model User {
   certificates Certificate[]
   
   auditLogs      AuditLog[]   @relation("ActorLogs")
-  monitoredGroups Group[] @relation("GroupMonitor")
   notifications  Notification[]
 
   // Request & Approvals
@@ -228,8 +225,6 @@ model Department {
   name    String   @unique
   departmentCourses CourseDepartment[]
   users   User[]
-  head    User?    @relation("DepartmentHead", fields: [headId], references: [id])
-  headId  String?  @db.ObjectId
   faculty   Faculty? @relation(fields: [facultyId], references: [id])
   facultyId String?  @db.ObjectId
   budgets   Budget[]
@@ -245,6 +240,7 @@ model Batch {
   department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
   departmentId String     @db.ObjectId
   profiles     Profile[]
+  groups       Group[]
   createdAt    DateTime   @default(now())
 }
 
@@ -252,8 +248,6 @@ model Faculty {
   id           String       @id @default(auto()) @map("_id") @db.ObjectId
   name         String       @unique
   departments  Department[]
-  head         User?        @relation("FacultyHead", fields: [headId], references: [id]) // New: Faculty can have a head
-  headId       String?      @db.ObjectId
 }
 
 model Course {
@@ -329,8 +323,9 @@ model Group {
   students   User[]   @relation(fields: [studentIds], references: [id])
   studentIds String[] @db.ObjectId
   
-  monitor    User?    @relation("GroupMonitor", fields: [monitorId], references: [id])
-  monitorId  String?  @db.ObjectId
+  batchId    String?  @db.ObjectId
+  batch      Batch?   @relation(fields: [batchId], references: [id])
+  
   academicYear String?
 
   assignments Assignment[]

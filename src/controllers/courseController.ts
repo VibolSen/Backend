@@ -139,7 +139,7 @@ export const getCourseById = async (req: Request, res: Response) => {
 
 export const createCourse = async (req: Request, res: Response) => {
   try {
-    const { name, code, credits, description, leadById, departmentIds } = req.body;
+    const { name, credits, leadById, departmentIds } = req.body;
 
     if (!name) {
       res.status(400).json({ error: 'Name is required' });
@@ -150,9 +150,7 @@ export const createCourse = async (req: Request, res: Response) => {
     const newCourse = await prisma.course.create({
       data: {
         name,
-        code,
         credits: credits ? parseInt(credits) : undefined,
-        description,
         leadById,
       },
     });
@@ -168,10 +166,6 @@ export const createCourse = async (req: Request, res: Response) => {
 
     res.status(201).json(newCourse);
   } catch (error: any) {
-    if (error.code === 'P2002' && error.meta?.target === 'Course_code_key') {
-        res.status(409).json({ error: `Course code '${req.body.code}' already exists.` });
-        return;
-    }
     console.error("Error creating course:", error);
     res.status(500).json({ error: "Failed to create course" });
   }
@@ -180,15 +174,13 @@ export const createCourse = async (req: Request, res: Response) => {
 export const updateCourse = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, code, credits, description, leadById, departmentIds } = req.body;
+    const { name, credits, leadById, departmentIds } = req.body;
 
     const updatedCourse = await prisma.course.update({
       where: { id: String(id) },
       data: {
         name,
-        code,
         credits: credits ? parseInt(credits) : undefined,
-        description,
         leadById
       },
     });

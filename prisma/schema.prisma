@@ -257,17 +257,15 @@ model Course {
   groupIds     String[]     @db.ObjectId
   leadBy       User?        @relation("CourseLead", fields: [leadById], references: [id])
   leadById     String?      @db.ObjectId
-  code         String?      @unique
   credits      Int?         @default(3)
-  description  String?
+  createdAt    DateTime?    @default(now())
+  updatedAt    DateTime?    @updatedAt
 
-  // ✅ Back relation for Enrollment
   enrollments Enrollment[]
   courseDepartments CourseDepartment[]
   announcements Announcement[]
-  certificates Certificate[] // New: Relation to Certificate model
+  certificates Certificate[]
   
-  // ✅ New Relations for Assignment & Exam
   assignments Assignment[]
   exams       Exam[]
   schedules   Schedule[]
@@ -276,7 +274,7 @@ model Course {
 model Certificate {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
   recipient   String
-  course      Course    @relation(fields: [courseId], references: [id])
+  course      Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
   courseId    String    @db.ObjectId
   issueDate   DateTime
   expiryDate  DateTime?
@@ -307,7 +305,7 @@ model Announcement {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  course    Course   @relation(fields: [courseId], references: [id])
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   courseId  String   @db.ObjectId
 
   author    User     @relation("AnnouncementsCreated", fields: [authorId], references: [id], onDelete: Cascade)
@@ -465,7 +463,7 @@ model Enrollment {
   student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   studentId String @db.ObjectId
 
-  course   Course @relation(fields: [courseId], references: [id])
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
   courseId String @db.ObjectId
 
   progress Int @default(0) // 0–100 percentage
@@ -515,7 +513,7 @@ model CourseDepartment {
   courseId     String   @db.ObjectId
   departmentId String   @db.ObjectId
 
-  course       Course   @relation(fields: [courseId], references: [id])
+  course       Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
 
   @@unique([courseId, departmentId])

@@ -24,9 +24,6 @@ export const getCourses = async (req: Request, res: Response) => {
                 email: true,
             }
         },
-        courseDepartments: {
-             include: { department: true }
-        },
         _count: {
             select: {
                 enrollments: true,
@@ -113,9 +110,7 @@ export const getCourseById = async (req: Request, res: Response) => {
             email: true,
           }
         },
-        courseDepartments: {
-          include: { department: true }
-        },
+
         _count: {
           select: {
             enrollments: true,
@@ -139,7 +134,7 @@ export const getCourseById = async (req: Request, res: Response) => {
 
 export const createCourse = async (req: Request, res: Response) => {
   try {
-    const { name, credits, leadById, departmentIds } = req.body;
+    const { name, leadById } = req.body;
 
     if (!name) {
       res.status(400).json({ error: 'Name is required' });
@@ -150,19 +145,9 @@ export const createCourse = async (req: Request, res: Response) => {
     const newCourse = await prisma.course.create({
       data: {
         name,
-        credits: credits ? parseInt(credits) : undefined,
         leadById,
       },
     });
-
-    if (departmentIds && Array.isArray(departmentIds)) {
-        await prisma.courseDepartment.createMany({
-            data: departmentIds.map((deptId: string) => ({
-                courseId: newCourse.id,
-                departmentId: deptId
-            }))
-        })
-    }
 
     res.status(201).json(newCourse);
   } catch (error: any) {
@@ -174,31 +159,15 @@ export const createCourse = async (req: Request, res: Response) => {
 export const updateCourse = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, credits, leadById, departmentIds } = req.body;
+    const { name, leadById } = req.body;
 
     const updatedCourse = await prisma.course.update({
       where: { id: String(id) },
       data: {
         name,
-        credits: credits ? parseInt(credits) : undefined,
         leadById
       },
     });
-
-    if (departmentIds) {
-        // Clear existing
-        await prisma.courseDepartment.deleteMany({ where: { courseId: String(id) }});
-
-        // Add new
-        if(Array.isArray(departmentIds) && departmentIds.length > 0) {
-             await prisma.courseDepartment.createMany({
-                data: departmentIds.map((deptId: string) => ({
-                    courseId: String(id),
-                    departmentId: deptId
-                }))
-            })
-        }
-    }
 
     res.json(updatedCourse);
   } catch (error) {
@@ -232,9 +201,7 @@ export const getCourseAnalytics = async (req: Request, res: Response) => {
         leadBy: {
           select: { firstName: true, lastName: true, id: true, email: true }
         },
-        courseDepartments: {
-          include: { department: true }
-        },
+
         enrollments: {
           include: {
             student: {

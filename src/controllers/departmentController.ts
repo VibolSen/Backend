@@ -7,11 +7,6 @@ export const getDepartments = async (req: Request, res: Response) => {
       include: {
         faculty: true,
         batches: true,
-        _count: {
-          select: {
-            departmentCourses: true
-          }
-        }
       },
       orderBy: { name: 'asc' },
     });
@@ -36,31 +31,9 @@ export const getDepartmentById = async (req: Request, res: Response) => {
             profile: true
           }
         },
-        departmentCourses: {
-          include: {
-            course: {
-              include: {
-                leadBy: {
-                  select: {
-                    id: true,
-                    firstName: true,
-                    lastName: true
-                  }
-                },
-                _count: {
-                  select: {
-                    enrollments: true,
-                    groups: true
-                  }
-                }
-              }
-            }
-          }
-        },
         _count: {
           select: {
             users: true,
-            departmentCourses: true
           }
         }
       }
@@ -80,7 +53,7 @@ export const getDepartmentById = async (req: Request, res: Response) => {
 
 export const createDepartment = async (req: Request, res: Response) => {
   try {
-    const { name, facultyId, generations } = req.body;
+    const { name, facultyId } = req.body;
 
     if (!name) {
       res.status(400).json({ error: 'Name is required' });
@@ -105,7 +78,7 @@ export const createDepartment = async (req: Request, res: Response) => {
 export const updateDepartment = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, facultyId, generations } = req.body;
+    const { name, facultyId } = req.body;
 
     const updatedDepartment = await prisma.department.update({
       where: { id: String(id) },

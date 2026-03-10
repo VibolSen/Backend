@@ -44,11 +44,6 @@ export const getTeacherCourses = async (req: Request, res: Response) => {
         ]
       },
       include: {
-        courseDepartments: {
-          include: {
-            department: true
-          }
-        },
         enrollments: {
           select: {
             studentId: true
@@ -88,7 +83,7 @@ export const getTeacherCourses = async (req: Request, res: Response) => {
 
       return {
         ...course,
-        department: course.courseDepartments[0]?.department,
+        department: null,
         groupCount: course._count.groups,
         studentCount: studentIdSet.size
       };

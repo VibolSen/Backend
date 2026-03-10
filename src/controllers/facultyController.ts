@@ -30,18 +30,8 @@ export const getFacultyById = async (req: Request, res: Response) => {
               include: { profile: true },
               orderBy: { lastName: 'asc' }
             },
-            departmentCourses: {
-              include: {
-                course: {
-                  include: {
-                    leadBy: { select: { id: true, firstName: true, lastName: true } },
-                    _count: { select: { enrollments: true, groups: true } }
-                  }
-                }
-              }
-            },
             _count: {
-              select: { users: true, departmentCourses: true }
+              select: { users: true }
             }
           }
         }

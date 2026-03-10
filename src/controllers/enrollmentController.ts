@@ -89,7 +89,6 @@ export const getEnrollments = async (req: Request, res: Response) => {
           select: {
             id: true,
             name: true,
-            credits: true,
           }
         }
       },

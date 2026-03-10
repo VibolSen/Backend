@@ -18,7 +18,6 @@ export const getStudentCourses = async (req: Request, res: Response) => {
         course: {
           include: {
             leadBy: { select: { firstName: true, lastName: true } },
-            courseDepartments: { include: { department: { select: { name: true } } } }
           }
         }
       }
@@ -35,7 +34,6 @@ export const getStudentCourses = async (req: Request, res: Response) => {
         courses: {
           include: {
             leadBy: { select: { firstName: true, lastName: true } },
-            courseDepartments: { include: { department: { select: { name: true } } } }
           }
         }
       }

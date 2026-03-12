@@ -311,7 +311,7 @@ export const submitSessionAttendance = async (req: AuthRequest, res: Response) =
             return res.status(400).json({ error: "records array is required" });
         }
 
-        const results = [];
+        const results: any[] = [];
         for (const record of records) {
             const { studentId, date, status, courseId } = record;
             

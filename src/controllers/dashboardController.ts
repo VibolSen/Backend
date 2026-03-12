@@ -133,7 +133,7 @@ export const getTeacherStats = async (req: Request, res: Response) => {
       }
     });
 
-    const pendingAttendance = [];
+    const pendingAttendance: any[] = [];
     for (const session of recentSessions) {
       if (session.schedule.assignedToGroup) {
         // Check if attendance records exist for this group on this session's date

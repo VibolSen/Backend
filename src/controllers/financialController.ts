@@ -746,7 +746,7 @@ export const generatePayrolls = async (req: AuthRequest, res: Response) => {
             include: { user: true }
         });
         
-        const generatedPayrolls = [];
+        const generatedPayrolls: any[] = [];
         
         for (const benefit of usersWithBenefits) {
             // Check if payroll already exists for this user and period
@@ -899,7 +899,7 @@ export const sendReminders = async (req: AuthRequest, res: Response) => {
             }
         });
 
-        const notifications = [];
+        const notifications: any[] = [];
 
         for (const invoice of pendingInvoices) {
             // Create notification for student

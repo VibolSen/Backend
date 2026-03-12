@@ -113,7 +113,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password || '123456', 10);
 
-    let studentId = undefined;
+    let studentId: string | undefined = undefined;
     if (role === 'STUDENT') {
       studentId = await generateStudentId();
     }
@@ -239,7 +239,11 @@ export const updateProfile = async (req: AuthRequest, res: Response) => {
 export const updateUser = async (req: AuthRequest, res: Response) => {
   try {
     const id = (req.query.id as string) || req.params.id;
-    const { email, firstName, lastName, role, isActive, specialization, maxWorkload, departmentId } = req.body;
+    const { 
+      email, firstName, lastName, role, isActive, specialization, maxWorkload, departmentId,
+      gender, academicStatus, degreeType, academicLevel, 
+      emergencyContactName, emergencyContactPhone, emergencyContactRelation 
+    } = req.body;
     let { batchId, generation } = req.body;
 
     if (firstName && /\d/.test(firstName)) return res.status(400).json({ error: "First name cannot contain numbers" });
@@ -444,7 +448,7 @@ export const bulkCreateUsers = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: "Invalid data format. Expected an array of users." });
     }
 
-    const createdUsers = [];
+    const createdUsers: any[] = [];
     for (const userData of users) {
       const { email, password, firstName, lastName, role, gender, academicStatus, departmentId } = userData;
       let { batchId, generation } = userData;

@@ -12,7 +12,7 @@ export const updateMyProfile = async (req: any, res: Response) => {
     const finalPhone = phoneNumber || phone;
     
     // Check if an image was uploaded
-    let avatarUrl = undefined;
+    let avatarUrl: string | undefined = undefined;
     if (req.file) {
       try {
         console.log(`[ProfileController] File detected: ${req.file.originalname} (${req.file.size} bytes)`);
@@ -54,11 +54,11 @@ export const updateMyProfile = async (req: any, res: Response) => {
 
     // 2. Upsert (Update or Create) the Profile record
     const profileData: any = {
-        ...(finalPhone !== undefined && { phone: finalPhone }),
-        ...(address !== undefined && { address }),
-        ...(bio !== undefined && { bio }),
-        ...(avatarUrl && { avatar: avatarUrl }),
-        ...(dateOfBirth && { dateOfBirth: new Date(dateOfBirth) })
+        ...(finalPhone !== undefined ? { phone: finalPhone } : {}),
+        ...(address !== undefined ? { address } : {}),
+        ...(bio !== undefined ? { bio } : {}),
+        ...(avatarUrl ? { avatar: avatarUrl } : {}),
+        ...(dateOfBirth ? { dateOfBirth: new Date(dateOfBirth) } : {})
     };
 
     console.log(`[ProfileController] Upserting profile data:`, Object.keys(profileData));

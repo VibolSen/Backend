@@ -12,19 +12,19 @@ export const getStudentCourses = async (req: Request, res: Response) => {
     }
 
     // 1. Get explicit enrollments
-    const enrollments = await prisma.enrollment.findMany({
+    const enrollments = await (prisma.enrollment as any).findMany({
       where: { studentId: String(studentId) },
       include: {
         course: {
           include: {
-            leadBy: { select: { firstName: true, lastName: true } },
+            leadBy: { select: { firstName: true, lastName: true } }
           }
         }
       }
     });
 
-    // 2. Get courses through group membership (using relation lookup for reliability)
-    const groups = await prisma.group.findMany({
+    // 2. Get courses through group membership
+    const groups = await (prisma.group as any).findMany({
       where: {
         students: {
           some: { id: String(studentId) }
@@ -33,7 +33,12 @@ export const getStudentCourses = async (req: Request, res: Response) => {
       include: {
         courses: {
           include: {
-            leadBy: { select: { firstName: true, lastName: true } },
+            leadBy: { select: { firstName: true, lastName: true } }
+          }
+        },
+        batch: {
+          include: {
+            department: true
           }
         }
       }
@@ -43,29 +48,34 @@ export const getStudentCourses = async (req: Request, res: Response) => {
     const courseMap = new Map();
 
     // Add courses from explicit enrollments
-    enrollments.forEach(en => {
-      courseMap.set(en.courseId, {
-        ...en.course,
-        progress: en.progress,
-        groupName: "Individual Enrollment"
-      });
+    enrollments.forEach((en: any) => {
+      if (en.course) {
+        courseMap.set(en.courseId, {
+          ...en.course,
+          progress: en.progress,
+          groupName: "Individual Enrollment"
+        });
+      }
     });
 
     // Add courses from groups
-    groups.forEach(group => {
-      group.courses.forEach(course => {
-        if (!courseMap.has(course.id)) {
-          courseMap.set(course.id, {
-            ...course,
-            progress: 0, // Default for group courses if no enrollment record
-            groupName: group.name
-          });
-        } else {
-          // If already there, update groupName if it was "Individual"
-          const existing = courseMap.get(course.id);
-          existing.groupName = group.name;
-        }
-      });
+    groups.forEach((group: any) => {
+      if (group.courses) {
+        group.courses.forEach((course: any) => {
+          if (!courseMap.has(course.id)) {
+            courseMap.set(course.id, {
+              ...course,
+              progress: 0,
+              groupName: group.name,
+              departmentName: group.batch?.department?.name || "General"
+            });
+          } else {
+            const existing = courseMap.get(course.id);
+            existing.groupName = group.name;
+            existing.departmentName = group.batch?.department?.name || existing.departmentName;
+          }
+        });
+      }
     });
 
     res.json(Array.from(courseMap.values()));

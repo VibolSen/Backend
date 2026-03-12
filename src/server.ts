@@ -162,6 +162,8 @@ app.get('/api/me/schedules', authenticateToken, async (req: any, res: any) => {
       include: {
         assignedToGroup: { select: { name: true } },
         assignedToTeacher: { select: { firstName: true, lastName: true } },
+        course: { select: { name: true } },
+        room: { select: { name: true, type: true, capacity: true } },
         sessions: true
       },
       orderBy: { startDate: 'asc' }

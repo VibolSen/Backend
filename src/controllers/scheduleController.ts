@@ -21,18 +21,44 @@ const checkConflicts = async (data: any, excludeScheduleId?: string) => {
         include: { sessions: true }
     });
 
+    const pStartDay = new Date(startDate);
+    pStartDay.setHours(0, 0, 0, 0);
+    const pEndDay = isRecurring ? new Date(endDate) : new Date(startDate);
+    pEndDay.setHours(23, 59, 59, 999);
+
     for (const proposedSession of sessions) {
         for (const existing of existingSchedules) {
-            // Check if days overlap
-            const daysOverlap = isRecurring && existing.isRecurring
-                ? daysOfWeek.some((day: string) => existing.daysOfWeek.includes(day))
-                : true; // If not both recurring, assume date range check handles it (simplification)
+            // Date range overlap check: (StartA <= EndB) and (EndA >= StartB)
+            const eStartDay = new Date(existing.startDate);
+            eStartDay.setHours(0, 0, 0, 0);
+            const eEndDay = existing.isRecurring ? new Date(existing.endDate) : new Date(existing.startDate);
+            eEndDay.setHours(23, 59, 59, 999);
 
-            if (!daysOverlap) continue;
+            const dateRangeOverlap = pStartDay <= eEndDay && pEndDay >= eStartDay;
+            if (!dateRangeOverlap) continue;
+
+            // Day of week overlap check
+            let dayMatch = false;
+            if (!isRecurring && !existing.isRecurring) {
+                // Both are single dates, and they overlap in range, so they are the same day
+                dayMatch = true;
+            } else if (isRecurring && existing.isRecurring) {
+                // Both recurring, check if any day of week matches
+                dayMatch = daysOfWeek.some((day: string) => existing.daysOfWeek.includes(day));
+            } else if (isRecurring && !existing.isRecurring) {
+                // Proposed is recurring, existing is single date
+                const existingDayName = new Date(existing.startDate).toLocaleDateString('en-US', { weekday: 'long' });
+                dayMatch = daysOfWeek.includes(existingDayName);
+            } else {
+                // Proposed is single date, existing is recurring
+                const proposedDayName = new Date(startDate).toLocaleDateString('en-US', { weekday: 'long' });
+                dayMatch = existing.daysOfWeek.includes(proposedDayName);
+            }
+
+            if (!dayMatch) continue;
 
             for (const existingSession of existing.sessions) {
                 // Time Overlap Logic: (StartA < EndB) and (EndA > StartB)
-                // We compare only the time portion (HH:mm) since startDate/endDate handles the date range
                 const pStart = proposedSession.startTime;
                 const pEnd = proposedSession.endTime;
                 const eStart = new Date(existingSession.startTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
@@ -41,9 +67,9 @@ const checkConflicts = async (data: any, excludeScheduleId?: string) => {
                 if (pStart < eEnd && pEnd > eStart) {
                     let reason = "";
                     if (existing.assignedToTeacherId === assignedToTeacherId) reason = "Teacher is already busy";
-                    if (existing.assignedToGroupId === assignedToGroupId) reason = "Group already has a class";
-                    if (existing.roomId === roomId) reason = "Room is already booked";
-                    if (existing.location === location && !reason) reason = `Location ${location} is already booked`;
+                    else if (existing.assignedToGroupId === assignedToGroupId) reason = "Group already has a class";
+                    else if (existing.roomId === roomId) reason = "Room is already booked";
+                    else if (existing.location === location) reason = `Location ${location} is already booked`;
                     
                     return { conflict: true, reason: `${reason} at ${eStart}-${eEnd} (${existing.title})` };
                 }

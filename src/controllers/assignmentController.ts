@@ -22,7 +22,7 @@ export const getAssignments = async (req: Request, res: Response) => {
                 _count: { select: { students: true } }
             } 
         },
-        course: { select: { name: true, code: true } },
+        course: { select: { name: true } },
         teacher: { select: { firstName: true, lastName: true } },
         _count: { select: { submissions: true } }
       },
@@ -42,7 +42,7 @@ export const getAssignment = async (req: Request, res: Response) => {
       where: { id: String(id) },
       include: {
         group: { select: { name: true } },
-        course: { select: { name: true, code: true } },
+        course: { select: { name: true } },
         submissions: {
           include: {
             student: { select: { id: true, firstName: true, lastName: true } },

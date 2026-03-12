@@ -1,8 +1,15 @@
 
 import { PrismaClient, Role } from '@prisma/client';
 import bcrypt from 'bcrypt';
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load .env explicitly
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const prisma = new PrismaClient();
+
+
 
 async function main() {
   console.log('Start seeding...');

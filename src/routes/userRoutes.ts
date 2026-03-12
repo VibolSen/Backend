@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { 
+import {
   getUsers, getUser, getProfile, updateProfile, updateUser, deleteUser, createUser,
-  adminResetPassword, toggleUserStatus, bulkCreateUsers, getAuditLogs
+  adminResetPassword, toggleUserStatus, bulkCreateUsers, bulkDeleteUsers, getAuditLogs
 } from '../controllers/userController';
 import { authenticateToken, authorizeRoles } from '../middleware/auth';
 
@@ -22,9 +22,10 @@ router.put('/:id', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFIC
 router.delete('/:id', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), deleteUser);
 
 // ✅ Account Activity & Security (Restricted)
-router.patch('/toggle-status/:id', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), toggleUserStatus);
-router.post('/reset-password/:id', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), adminResetPassword);
-router.post('/bulk-create', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), bulkCreateUsers);
+router.patch('/toggle-status/:id', authenticateToken, authorizeRoles('ADMIN', 'HR'), toggleUserStatus);
+router.post('/reset-password/:id', authenticateToken, authorizeRoles('ADMIN', 'HR'), adminResetPassword);
+router.post('/bulk-create', authenticateToken, authorizeRoles('ADMIN', 'HR'), bulkCreateUsers);
+router.post('/bulk-delete', authenticateToken, authorizeRoles('ADMIN'), bulkDeleteUsers);
 router.get('/audit-logs', authenticateToken, authorizeRoles('ADMIN'), getAuditLogs);
 
 // --- Profile Management (Authenticated) ---

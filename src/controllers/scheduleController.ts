@@ -69,7 +69,7 @@ export const getSchedules = async (req: Request, res: Response) => {
       include: {
         assignedToGroup: { select: { name: true } },
         assignedToTeacher: { select: { firstName: true, lastName: true } },
-        course: { select: { name: true, code: true } },
+        course: { select: { name: true } },
         sessions: {
             orderBy: { startTime: 'asc' }
         }

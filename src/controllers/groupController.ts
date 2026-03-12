@@ -6,12 +6,15 @@ export const getGroups = async (req: Request, res: Response) => {
     const groups = await prisma.group.findMany({
       include: {
         courses: true,
-        students: {
-             select: { id: true, firstName: true, lastName: true }
+        batch: {
+          include: { department: { select: { id: true, name: true } } }
         },
-         _count: {
-            select: { students: true, courses: true }
-         }
+        students: {
+          select: { id: true, firstName: true, lastName: true }
+        },
+        _count: {
+          select: { students: true, courses: true }
+        }
       } as any,
       orderBy: { name: 'asc' },
     });
@@ -29,6 +32,9 @@ export const getGroup = async (req: Request, res: Response) => {
       where: { id: String(id) },
       include: {
         courses: true,
+        batch: {
+          include: { department: { select: { id: true, name: true } } }
+        },
         students: {
           select: { id: true, firstName: true, lastName: true, email: true },
         }
@@ -46,7 +52,7 @@ export const getGroup = async (req: Request, res: Response) => {
 
 export const createGroup = async (req: Request, res: Response) => {
   try {
-    const { name, academicYear, monitorId, courseIds, studentIds } = req.body;
+    const { name, academicYear, batchId, courseIds, studentIds } = req.body;
 
     if (!name) {
       res.status(400).json({ error: 'Name is required' });
@@ -55,11 +61,11 @@ export const createGroup = async (req: Request, res: Response) => {
 
     const newGroup = await prisma.group.create({
       data: {
-         name,
-         academicYear,
-         monitorId: monitorId || undefined,
-         courses: courseIds ? { connect: courseIds.map((id: string) => ({ id })) } : undefined,
-         students: studentIds ? { connect: studentIds.map((id: string) => ({ id })) } : undefined
+        name,
+        academicYear,
+        batchId: batchId || undefined,
+        courses: courseIds ? { connect: courseIds.map((id: string) => ({ id })) } : undefined,
+        students: studentIds ? { connect: studentIds.map((id: string) => ({ id })) } : undefined
       } as any,
     });
 
@@ -73,14 +79,14 @@ export const createGroup = async (req: Request, res: Response) => {
 export const updateGroup = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, academicYear, monitorId, courseIds, studentIds } = req.body;
+    const { name, academicYear, batchId, courseIds, studentIds } = req.body;
 
     const updatedGroup = await prisma.group.update({
       where: { id: String(id) },
       data: {
         name,
         academicYear,
-        monitorId: monitorId || null,
+        batchId: batchId || null,
         courses: courseIds ? { set: courseIds.map((id: string) => ({ id })) } : undefined,
         students: studentIds ? { set: studentIds.map((id: string) => ({ id })) } : undefined
       } as any,

@@ -6,19 +6,7 @@ export const getDepartments = async (req: Request, res: Response) => {
     const departments = await prisma.department.findMany({
       include: {
         faculty: true,
-        head: {
-            select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                email: true,
-            }
-        },
-        _count: {
-          select: {
-            departmentCourses: true
-          }
-        }
+        batches: true,
       },
       orderBy: { name: 'asc' },
     });
@@ -29,9 +17,43 @@ export const getDepartments = async (req: Request, res: Response) => {
   }
 };
 
+export const getDepartmentById = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const department = await prisma.department.findUnique({
+      where: { id: String(id) },
+      include: {
+        faculty: true,
+        batches: true,
+        users: { // Students in this department
+          where: { role: 'STUDENT' }, // Only students
+          include: {
+            profile: true
+          }
+        },
+        _count: {
+          select: {
+            users: true,
+          }
+        }
+      }
+    });
+
+    if (!department) {
+      res.status(404).json({ error: "Department not found" });
+      return;
+    }
+
+    res.json(department);
+  } catch (err) {
+    console.error("Failed to fetch department:", err);
+    res.status(500).json({ error: "Failed to fetch department" });
+  }
+};
+
 export const createDepartment = async (req: Request, res: Response) => {
   try {
-    const { name, facultyId, headId } = req.body;
+    const { name, facultyId } = req.body;
 
     if (!name) {
       res.status(400).json({ error: 'Name is required' });
@@ -42,8 +64,8 @@ export const createDepartment = async (req: Request, res: Response) => {
       data: {
         name,
         facultyId,
-        headId: headId || undefined
       },
+      include: { batches: true }
     });
 
     res.status(201).json(newDepartment);
@@ -56,15 +78,15 @@ export const createDepartment = async (req: Request, res: Response) => {
 export const updateDepartment = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, facultyId, headId } = req.body;
+    const { name, facultyId } = req.body;
 
     const updatedDepartment = await prisma.department.update({
       where: { id: String(id) },
       data: {
         name,
         facultyId,
-        headId: headId || null
       },
+      include: { batches: true }
     });
 
     res.json(updatedDepartment);

@@ -130,24 +130,6 @@ export const getMe = async (req: AuthRequest, res: Response) => {
             }
           }
         },
-        headedFaculties: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        ledCourses: {
-          select: {
-            id: true,
-            name: true,
-            groups: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
       },
     });
 
@@ -155,20 +137,7 @@ export const getMe = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    // For TEACHER role, consolidate groupIds
-    let finalUser = { ...user };
-    if (user.role === "TEACHER") {
-      const teacherLedGroupIds = user.ledCourses
-        ? user.ledCourses.flatMap((course) =>
-            course.groups.map((group) => group.id)
-          )
-        : [];
-      finalUser.groupIds = Array.from(
-        new Set([...(user.groupIds || []), ...teacherLedGroupIds])
-      );
-    }
-
-    res.json(finalUser);
+    res.json(user);
   } catch (error) {
     console.error("ME API error:", error);
     res.status(500).json({ error: "An internal server error occurred" });

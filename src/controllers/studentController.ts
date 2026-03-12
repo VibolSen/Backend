@@ -18,7 +18,6 @@ export const getStudentCourses = async (req: Request, res: Response) => {
         course: {
           include: {
             leadBy: { select: { firstName: true, lastName: true } },
-            courseDepartments: { include: { department: { select: { name: true } } } }
           }
         }
       }
@@ -35,7 +34,6 @@ export const getStudentCourses = async (req: Request, res: Response) => {
         courses: {
           include: {
             leadBy: { select: { firstName: true, lastName: true } },
-            courseDepartments: { include: { department: { select: { name: true } } } }
           }
         }
       }
@@ -106,14 +104,14 @@ export const getStudentAssignments = async (req: Request, res: Response) => {
 
     // Map to the format expected by the frontend (Submission-centric)
     const results = assignments.map(a => {
-        const submission = a.submissions[0];
-        return {
-            id: submission?.id || a.id, // Use submission ID if available, otherwise assignment ID
-            status: submission?.status || 'PENDING',
-            grade: submission?.grade || null,
-            submittedAt: submission?.submittedAt || null,
-            assignment: a
-        };
+      const submission = a.submissions[0];
+      return {
+        id: submission?.id || a.id, // Use submission ID if available, otherwise assignment ID
+        status: submission?.status || 'PENDING',
+        grade: submission?.grade || null,
+        submittedAt: submission?.submittedAt || null,
+        assignment: a
+      };
     });
 
     res.json(results);
@@ -180,14 +178,14 @@ export const getStudentExams = async (req: Request, res: Response) => {
 
     // Map to the format expected by the frontend (Submission-centric)
     const results = exams.map((e: any) => {
-        const submission = e.submissions[0];
-        return {
-            id: submission?.id || e.id,
-            status: submission?.status || 'PENDING',
-            grade: submission?.grade || null,
-            submittedAt: submission?.submittedAt || null,
-            exam: e
-        };
+      const submission = e.submissions[0];
+      return {
+        id: submission?.id || e.id,
+        status: submission?.status || 'PENDING',
+        grade: submission?.grade || null,
+        submittedAt: submission?.submittedAt || null,
+        exam: e
+      };
     });
 
     res.json(results);
@@ -201,12 +199,16 @@ export const getStudents = async (req: Request, res: Response) => {
   try {
     const students = await prisma.user.findMany({
       where: { role: 'STUDENT' },
-      include: { 
+      include: {
         enrollments: {
           include: { course: true }
         },
-        profile: true
+        profile: true,
+        department: {
+          include: { faculty: true }
+        }
       },
+      orderBy: { lastName: 'asc' }
     });
     res.json(students || []);
   } catch (err) {
@@ -217,15 +219,19 @@ export const getStudents = async (req: Request, res: Response) => {
 
 export const createStudent = async (req: Request, res: Response) => {
   try {
-    const { 
-      email, password, firstName, lastName, 
-      gender, academicStatus, degreeType, academicLevel,
-      currentCourses, specialization, maxWorkload, departmentId 
+    const {
+      email, password, firstName, lastName, role, departmentId,
+      gender, academicStatus, academicYear, generation,
+      emergencyContactName, emergencyContactPhone, emergencyContactRelation,
+      specialization, maxWorkload,
+      currentCourses
     } = req.body;
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password || '123456', 10);
+    if (!email || !firstName || !lastName) {
+      return res.status(400).json({ error: "Missing required identity fields" });
+    }
 
+    const hashedPassword = await bcrypt.hash(password || '123456', 10);
     const studentId = await generateStudentId();
 
     const newStudent = await prisma.user.create({
@@ -235,24 +241,26 @@ export const createStudent = async (req: Request, res: Response) => {
         firstName,
         lastName,
         role: 'STUDENT',
-        isActive: true,
         departmentId: departmentId || undefined,
         profile: {
           create: {
             gender: gender || 'Other',
-            studentId,
             academicStatus: academicStatus || 'ACTIVE',
-            degreeType: degreeType || 'BACHELOR',
-            academicLevel: academicLevel || 'ENROLLMENT',
+            studentId,
+            academicYear: academicYear ? parseInt(String(academicYear)) : 1,
+            generation: generation || "",
+            emergencyContactName,
+            emergencyContactPhone,
+            emergencyContactRelation,
             specialization: specialization || [],
-            maxWorkload: maxWorkload ? parseInt(maxWorkload) : undefined,
+            maxWorkload: maxWorkload ? parseInt(String(maxWorkload)) : undefined,
           } as any
         }
       },
       include: { profile: true }
     });
 
-    if (currentCourses && currentCourses.length > 0) {
+    if (currentCourses && Array.isArray(currentCourses) && currentCourses.length > 0) {
       await prisma.enrollment.createMany({
         data: currentCourses.map((courseId: string) => ({
           studentId: newStudent.id,
@@ -267,17 +275,19 @@ export const createStudent = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "A user with this email already exists." });
     }
     console.error("Error creating student:", error);
-    res.status(500).json({ error: "Failed to create student" });
+    res.status(500).json({ error: "Failed to create student", details: (error as any).message });
   }
 };
 
 export const updateStudent = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { 
-      email, firstName, lastName, isActive,
-      gender, academicStatus, degreeType, academicLevel,
-      currentCourses, specialization, maxWorkload, departmentId 
+    const {
+      email, firstName, lastName, role, departmentId,
+      gender, academicStatus, academicYear, generation,
+      emergencyContactName, emergencyContactPhone, emergencyContactRelation,
+      specialization, maxWorkload,
+      currentCourses
     } = req.body;
 
     if (!id) {
@@ -291,25 +301,30 @@ export const updateStudent = async (req: Request, res: Response) => {
         email,
         firstName,
         lastName,
-        isActive,
         departmentId: departmentId || undefined,
         profile: {
           upsert: {
             create: {
               gender: gender || 'Other',
               academicStatus: academicStatus || 'ACTIVE',
-              degreeType: degreeType || 'BACHELOR',
-              academicLevel: academicLevel || 'ENROLLMENT',
+              academicYear: academicYear ? parseInt(String(academicYear)) : 1,
+              generation: generation || "",
+              emergencyContactName,
+              emergencyContactPhone,
+              emergencyContactRelation,
               specialization: specialization || [],
-              maxWorkload: maxWorkload ? parseInt(maxWorkload) : undefined,
+              maxWorkload: maxWorkload ? parseInt(String(maxWorkload)) : undefined,
             } as any,
             update: {
               gender,
               academicStatus,
-              degreeType,
-              academicLevel,
-              specialization,
-              maxWorkload: maxWorkload ? parseInt(maxWorkload) : undefined,
+              academicYear: academicYear ? parseInt(String(academicYear)) : undefined,
+              generation,
+              emergencyContactName,
+              emergencyContactPhone,
+              emergencyContactRelation,
+              specialization: specialization || undefined,
+              maxWorkload: maxWorkload ? parseInt(String(maxWorkload)) : undefined,
             } as any
           }
         }
@@ -317,20 +332,20 @@ export const updateStudent = async (req: Request, res: Response) => {
       include: { profile: true }
     });
 
-    if (currentCourses) {
+    if (currentCourses && Array.isArray(currentCourses)) {
       // Remove existing enrollments
       await prisma.enrollment.deleteMany({
         where: { studentId: String(id) }
       });
-      
+
       // Add new enrollments
       if (currentCourses.length > 0) {
-         await prisma.enrollment.createMany({
-            data: currentCourses.map((courseId: string) => ({
-              studentId: id,
-              courseId: courseId
-            }))
-         });
+        await prisma.enrollment.createMany({
+          data: currentCourses.map((courseId: string) => ({
+            studentId: String(id),
+            courseId: courseId
+          }))
+        });
       }
     }
 
@@ -340,7 +355,7 @@ export const updateStudent = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "A user with this email already exists." });
     }
     console.error("Error updating student:", error);
-    res.status(500).json({ error: "Failed to update student" });
+    res.status(500).json({ error: "Failed to update student", details: (error as any).message });
   }
 };
 

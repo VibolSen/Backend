@@ -2,10 +2,13 @@ generator client {
   provider = "prisma-client-js"
 }
 
+
 datasource db {
   provider = "mongodb"
   url      = env("DATABASE_URL")
 }
+
+
 
 enum Role {
   ADMIN
@@ -116,8 +119,6 @@ model User {
   groups           Group[]     @relation(fields: [groupIds], references: [id])
   groupIds         String[]    @db.ObjectId
   ledCourses       Course[]    @relation("CourseLead")
-  headedDepartments Department[] @relation("DepartmentHead")
-  headedFaculties   Faculty[]    @relation("FacultyHead") // New: User can head multiple faculties
 
   createdAssignments Assignment[] @relation("AssignmentsCreated")
   submissions        Submission[] @relation("SubmissionsMade")
@@ -146,7 +147,6 @@ model User {
   certificates Certificate[]
   
   auditLogs      AuditLog[]   @relation("ActorLogs")
-  monitoredGroups Group[] @relation("GroupMonitor")
   notifications  Notification[]
 
   // Request & Approvals
@@ -205,6 +205,13 @@ model Profile {
   specialization String[] // e.g. ["Mathematics", "Physics"]
   maxWorkload    Int?     // e.g. 5 courses per semester
 
+  // Admin/University Fields
+  academicYear   Int?      @default(1) // Level 1, 2, 3, 4
+  semester       Int?      @default(1) // Semester 1, 2
+  generation     String?               // e.g. "G1" (Keep for display)
+  batch          Batch?    @relation(fields: [batchId], references: [id])
+  batchId        String?   @db.ObjectId
+
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String   @unique @db.ObjectId
 }
@@ -233,21 +240,30 @@ model LibraryResource {
 model Department {
   id      String   @id @default(auto()) @map("_id") @db.ObjectId
   name    String   @unique
-  departmentCourses CourseDepartment[]
   users   User[]
-  head    User?    @relation("DepartmentHead", fields: [headId], references: [id])
-  headId  String?  @db.ObjectId
   faculty   Faculty? @relation(fields: [facultyId], references: [id])
   facultyId String?  @db.ObjectId
   budgets   Budget[]
+  batches   Batch[]
+}
+
+model Batch {
+  id           String     @id @default(auto()) @map("_id") @db.ObjectId
+  name         String     // e.g. "G1"
+  startDate    DateTime?
+  endDate      DateTime?
+  status       String?    @default("ACTIVE")
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  departmentId String     @db.ObjectId
+  profiles     Profile[]
+  groups       Group[]
+  createdAt    DateTime   @default(now())
 }
 
 model Faculty {
   id           String       @id @default(auto()) @map("_id") @db.ObjectId
   name         String       @unique
   departments  Department[]
-  head         User?        @relation("FacultyHead", fields: [headId], references: [id]) // New: Faculty can have a head
-  headId       String?      @db.ObjectId
 }
 
 model Course {
@@ -257,17 +273,13 @@ model Course {
   groupIds     String[]     @db.ObjectId
   leadBy       User?        @relation("CourseLead", fields: [leadById], references: [id])
   leadById     String?      @db.ObjectId
-  code         String?      @unique
-  credits      Int?         @default(3)
-  description  String?
+  createdAt    DateTime?    @default(now())
+  updatedAt    DateTime?    @updatedAt
 
-  // ✅ Back relation for Enrollment
   enrollments Enrollment[]
-  courseDepartments CourseDepartment[]
   announcements Announcement[]
-  certificates Certificate[] // New: Relation to Certificate model
+  certificates Certificate[]
   
-  // ✅ New Relations for Assignment & Exam
   assignments Assignment[]
   exams       Exam[]
   schedules   Schedule[]
@@ -276,7 +288,7 @@ model Course {
 model Certificate {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
   recipient   String
-  course      Course    @relation(fields: [courseId], references: [id])
+  course      Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
   courseId    String    @db.ObjectId
   issueDate   DateTime
   expiryDate  DateTime?
@@ -307,7 +319,7 @@ model Announcement {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  course    Course   @relation(fields: [courseId], references: [id])
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   courseId  String   @db.ObjectId
 
   author    User     @relation("AnnouncementsCreated", fields: [authorId], references: [id], onDelete: Cascade)
@@ -323,8 +335,9 @@ model Group {
   students   User[]   @relation(fields: [studentIds], references: [id])
   studentIds String[] @db.ObjectId
   
-  monitor    User?    @relation("GroupMonitor", fields: [monitorId], references: [id])
-  monitorId  String?  @db.ObjectId
+  batchId    String?  @db.ObjectId
+  batch      Batch?   @relation(fields: [batchId], references: [id])
+  
   academicYear String?
 
   assignments Assignment[]
@@ -473,7 +486,7 @@ model Enrollment {
   student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   studentId String @db.ObjectId
 
-  course   Course @relation(fields: [courseId], references: [id])
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
   courseId String @db.ObjectId
 
   group     Group?   @relation(fields: [groupId], references: [id])
@@ -525,18 +538,6 @@ model Schedule {
 
   sessions    Session[]
 }
-
-model CourseDepartment {
-  id           String   @id @default(auto()) @map("_id") @db.ObjectId
-  courseId     String   @db.ObjectId
-  departmentId String   @db.ObjectId
-
-  course       Course   @relation(fields: [courseId], references: [id])
-  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
-
-  @@unique([courseId, departmentId])
-}
-
 
 enum JobPostingStatus {
   OPEN

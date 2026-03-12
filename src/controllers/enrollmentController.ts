@@ -19,8 +19,8 @@ async function calculateCourseProgress(studentId: string, courseId: string) {
   const assignments = course.groups.flatMap((g) => g.assignments);
   const exams = course.groups.flatMap((g) => g.exams);
 
-  const totalPossiblePoints = 
-    assignments.reduce((sum, a: any) => sum + (a.maxPoints || a.points || 100), 0) + 
+  const totalPossiblePoints =
+    assignments.reduce((sum, a: any) => sum + (a.maxPoints || a.points || 100), 0) +
     exams.reduce((sum, e: any) => sum + (e.maxScore || 100), 0);
 
   if (totalPossiblePoints === 0) return 0;
@@ -41,8 +41,8 @@ async function calculateCourseProgress(studentId: string, courseId: string) {
     },
   });
 
-  const earnedPoints = 
-    studentSubmissions.reduce((sum, s) => sum + (s.grade || 0), 0) + 
+  const earnedPoints =
+    studentSubmissions.reduce((sum, s) => sum + (s.grade || 0), 0) +
     studentExamSubmissions.reduce((sum, s) => sum + (s.grade || 0), 0);
 
   const progress = (earnedPoints / totalPossiblePoints) * 100;
@@ -73,19 +73,26 @@ export const updateProgress = async (req: Request, res: Response) => {
 
 export const getEnrollments = async (req: Request, res: Response) => {
   try {
-    const { studentId, courseId } = req.query;
-    const where: any = {};
-    if (studentId) where.studentId = studentId as string;
-    if (courseId) where.courseId = courseId as string;
-
+    const { studentId } = req.query;
     const enrollments = await prisma.enrollment.findMany({
-      where,
+      where: studentId ? { studentId: studentId as string } : {},
       include: {
-        student: true,
-        course: true,
-        group: true,
-      } as any,
-      orderBy: { createdAt: 'desc' } as any
+        student: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          }
+        },
+        course: {
+          select: {
+            id: true,
+            name: true,
+          }
+        }
+      },
+      orderBy: { id: 'desc' }
     });
     res.json(enrollments);
   } catch (error) {
@@ -96,75 +103,23 @@ export const getEnrollments = async (req: Request, res: Response) => {
 
 export const createEnrollment = async (req: Request, res: Response) => {
   try {
-    const { studentId, courseId, groupId, semester, status } = req.body;
+    const { studentId, courseId, progress = 0 } = req.body;
 
-    if (!studentId || !courseId) {
-      return res.status(400).json({ error: "studentId and courseId are required" });
-    }
-
-    const enrollment = await prisma.enrollment.create({
-      data: {
-        studentId,
-        courseId,
-        groupId: groupId || undefined,
-        semester,
-        status: status || 'PENDING',
-      } as any,
+    const enrollment = await prisma.enrollment.upsert({
+      where: {
+        studentId_courseId: { studentId, courseId }
+      },
+      update: { progress },
+      create: { studentId, courseId, progress },
       include: {
         student: true,
-        course: true,
-        group: true,
-      } as any
+        course: true
+      }
     });
 
-    res.status(201).json(enrollment);
-  } catch (error: any) {
-    if (error.code === 'P2002') {
-      return res.status(400).json({ error: "Student is already enrolled in this course" });
-    }
-    console.error("Failed to create enrollment:", error);
-    res.status(500).json({ error: "Failed to create enrollment" });
-  }
-};
-
-export const updateEnrollment = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { status, semester, groupId, progress } = req.body;
-
-    const updated = await prisma.enrollment.update({
-      where: { id: id as any },
-      data: {
-        status,
-        semester,
-        groupId: groupId !== undefined ? groupId : undefined,
-        progress,
-      } as any,
-      include: {
-        student: true,
-        course: true,
-        group: true,
-      } as any
-    });
-
-    res.json(updated);
+    res.json(enrollment);
   } catch (error) {
-    console.error("Failed to update enrollment:", error);
-    res.status(500).json({ error: "Failed to update enrollment" });
-  }
-};
-
-export const deleteEnrollment = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-
-    await prisma.enrollment.delete({
-      where: { id: id as any }
-    });
-
-    res.json({ message: "Enrollment removed successfully" });
-  } catch (error) {
-    console.error("Failed to delete enrollment:", error);
-    res.status(500).json({ error: "Failed to delete enrollment" });
+    console.error("Save enrollment error:", error);
+    res.status(500).json({ error: "Failed to save enrollment" });
   }
 };

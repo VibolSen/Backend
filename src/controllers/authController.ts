@@ -35,15 +35,39 @@ export const login = async (req: Request, res: Response) => {
       data: { lastLogin: new Date() }
     });
 
+    // Create session
+    const userAgent = req.headers['user-agent'] || 'Unknown Device';
+    let device = 'Desktop';
+    if (/mobile/i.test(userAgent)) device = 'Mobile';
+    else if (/tablet/i.test(userAgent)) device = 'Tablet';
+
+    let browser = 'Unknown Browser';
+    if (/chrome|crios/i.test(userAgent)) browser = 'Chrome';
+    else if (/firefox|fxios/i.test(userAgent)) browser = 'Firefox';
+    else if (/safari/i.test(userAgent)) browser = 'Safari';
+    else if (/edge/i.test(userAgent)) browser = 'Edge';
+
+    const session = await prisma.userSession.create({
+      data: {
+        userId: user.id,
+        device: device,
+        browser: browser,
+        ipAddress: req.ip || req.headers['x-forwarded-for']?.toString() || 'Unknown',
+        location: 'Phnom Penh, KH', // Placeholder for now
+        status: 'active'
+      }
+    });
+
     const tokenPayload = {
       userId: user.id,
       role: user.role,
+      sessionId: session.id
     };
 
     const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '1d' });
     const { password: _, ...userWithoutPassword } = user;
 
-    res.json({ user: userWithoutPassword, token });
+    res.json({ user: userWithoutPassword, token, sessionId: session.id });
   } catch (error) {
     console.error("Login API error:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -137,7 +161,7 @@ export const getMe = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    res.json(user);
+    res.json({ ...user, sessionId: req.user.sessionId });
   } catch (error) {
     console.error("ME API error:", error);
     res.status(500).json({ error: "An internal server error occurred" });
@@ -152,5 +176,78 @@ export const logout = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Logout API error:", error);
     res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+export const getUserSessions = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const sessions = await prisma.userSession.findMany({
+      where: { 
+        userId: req.user.userId,
+        status: 'active'
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5 // Limit to recent 5 active sessions
+    });
+
+    res.json(sessions);
+  } catch (error) {
+    console.error("Fetch sessions error:", error);
+    res.status(500).json({ error: "Failed to fetch active sessions" });
+  }
+};
+
+export const revokeOtherSessions = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const currentSessionId = req.user.sessionId;
+
+    await prisma.userSession.updateMany({
+      where: {
+        userId: req.user.userId,
+        id: { not: currentSessionId },
+        status: 'active'
+      },
+      data: {
+        status: 'logged_out'
+      }
+    });
+
+    res.json({ message: "Other devices signed out successfully" });
+  } catch (error) {
+    console.error("Revoke sessions error:", error);
+    res.status(500).json({ error: "Failed to revoke other sessions" });
+  }
+};
+
+export const revokeSession = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const { sessionId } = req.params;
+
+    await prisma.userSession.update({
+      where: {
+        id: sessionId as string,
+        userId: req.user.userId
+      },
+      data: {
+        status: 'logged_out'
+      }
+    });
+
+    res.json({ message: "Session revoked successfully" });
+  } catch (error) {
+    console.error("Revoke session error:", error);
+    res.status(500).json({ error: "Failed to revoke session" });
   }
 };

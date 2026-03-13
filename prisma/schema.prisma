@@ -152,6 +152,20 @@ model User {
   // Request & Approvals
   leaveRequests  LeaveRequest[]
   approvedLeaves LeaveRequest[] @relation("LeaveApprover")
+  userSessions   UserSession[]
+}
+
+model UserSession {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device    String   // e.g., "Windows PC"
+  browser   String   // e.g., "Chrome"
+  location  String?  // e.g., "Phnom Penh, KH"
+  ipAddress String?
+  status    String   @default("active") // "active", "logged_out"
+  lastSeen  DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 model AuditLog {

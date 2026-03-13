@@ -110,12 +110,30 @@ export const getCourseById = async (req: Request, res: Response) => {
             email: true,
           }
         },
-
+        groups: {
+          include: {
+            batch: {
+              include: {
+                department: {
+                  select: {
+                    name: true
+                  }
+                }
+              }
+            }
+          }
+        },
+        schedules: {
+          select: {
+            id: true,
+          }
+        },
         _count: {
           select: {
             enrollments: true,
             announcements: true,
-            groups: true
+            groups: true,
+            schedules: true
           }
         }
       },

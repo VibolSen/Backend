@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { login, register, getMe, logout } from '../controllers/authController';
+import { login, register, getMe, logout, getUserSessions, revokeOtherSessions, revokeSession } from '../controllers/authController';
 import { authenticateToken } from '../middleware/auth';
 
 const router = Router();
@@ -69,6 +69,54 @@ router.get('/me', authenticateToken, getMe);
  *         description: Logout successful
  */
 router.post('/logout', logout);
+
+/**
+ * @swagger
+ * /api/auth/sessions:
+ *   get:
+ *     summary: Get active user sessions
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of active sessions
+ */
+router.get('/sessions', authenticateToken, getUserSessions);
+
+/**
+ * @swagger
+ * /api/auth/sessions/revoke-other:
+ *   post:
+ *     summary: Sign out other devices
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Other devices signed out
+ */
+router.post('/sessions/revoke-other', authenticateToken, revokeOtherSessions);
+
+/**
+ * @swagger
+ * /api/auth/sessions/revoke/{sessionId}:
+ *   post:
+ *     summary: Sign out a specific device
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Session revoked
+ */
+router.post('/sessions/revoke/:sessionId', authenticateToken, revokeSession);
 
 export default router;
 

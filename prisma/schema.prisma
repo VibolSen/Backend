@@ -623,6 +623,13 @@ enum InvoiceStatus {
   CANCELLED
 }
 
+enum BillingPeriod {
+  SEMESTER
+  YEAR
+  MONTH
+  OTHER
+}
+
 enum PaymentMethod {
   CASH
   CREDIT_CARD
@@ -635,6 +642,7 @@ model Fee {
   name        String       @unique
   description String?
   amount      Float
+  currency    String       @default("USD")
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   invoiceItems InvoiceItem[]
@@ -645,6 +653,10 @@ model Invoice {
   student     User          @relation(fields: [studentId], references: [id], onDelete: Cascade)
   studentId   String        @db.ObjectId
   status      InvoiceStatus @default(DRAFT)
+  period      BillingPeriod @default(SEMESTER)
+  academicYear Int?
+  semester     Int?
+  currency    String        @default("USD")
   issueDate   DateTime
   dueDate     DateTime
   totalAmount Float
@@ -676,7 +688,7 @@ model Payment {
   senderAccount String?   // To record Bakong ID / Bank Account
   senderName    String?   // To record the person who paid
   receiverAccount String? // To record school merchant account received
-  currency      String?   // USD or KHR
+  currency      String        @default("USD")
   md5           String?   // Security Hash from Bank
   notes         String?
   createdAt     DateTime      @default(now())

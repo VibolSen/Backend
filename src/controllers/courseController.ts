@@ -43,6 +43,7 @@ export const getCourses = async (req: Request, res: Response) => {
 export const getCourseStudents = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const { groupId } = req.query;
 
     if (!id || id === 'undefined' || id.length !== 24) {
       return res.status(400).json({ error: "Invalid Course ID format" });
@@ -60,6 +61,7 @@ export const getCourseStudents = async (req: Request, res: Response) => {
           }
         },
         groups: {
+          where: groupId ? { id: String(groupId) } : undefined,
           include: {
             students: {
               select: { id: true, firstName: true, lastName: true, email: true, role: true }
@@ -75,14 +77,25 @@ export const getCourseStudents = async (req: Request, res: Response) => {
 
     // Deduplicate students
     const studentMap = new Map();
-    course.enrollments.forEach(e => {
-      if (e.student) studentMap.set(e.student.id, e.student);
-    });
-    course.groups.forEach(g => {
-      g.students.forEach(s => {
-        studentMap.set(s.id, s);
+    
+    // If groupId is provided, we ONLY want students from that specific group
+    // Otherwise, we include students from all groups AND direct enrollments
+    if (groupId) {
+      course.groups.forEach(g => {
+        g.students.forEach(s => {
+          studentMap.set(s.id, s);
+        });
       });
-    });
+    } else {
+      course.enrollments.forEach(e => {
+        if (e.student) studentMap.set(e.student.id, e.student);
+      });
+      course.groups.forEach(g => {
+        g.students.forEach(s => {
+          studentMap.set(s.id, s);
+        });
+      });
+    }
 
     res.json(Array.from(studentMap.values()));
   } catch (err) {

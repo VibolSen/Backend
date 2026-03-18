@@ -191,10 +191,10 @@ export const updateExam = async (req: Request, res: Response) => {
     
     finalUrls = [...finalUrls, ...uploadedUrls];
 
-    // Cloudinary Cleanup: Find removed URLs
+    // Cloudinary Cleanup & Notification Check: Find original state
     const originalExam = await (prisma.exam as any).findUnique({
         where: { id: String(id) },
-        select: { attachmentUrls: true }
+        select: { attachmentUrls: true, groupId: true, title: true }
     });
 
     const updatedExam = await (prisma.exam as any).update({
@@ -215,6 +215,27 @@ export const updateExam = async (req: Request, res: Response) => {
         attachmentUrls: finalUrls
       },
     });
+
+    // Notify students in the group if status is SCHEDULED
+    if (status === 'SCHEDULED' || !status) {
+        const group = await prisma.group.findUnique({
+            where: { id: groupId || originalExam?.groupId },
+            select: { studentIds: true, name: true }
+        });
+
+        if (group?.studentIds) {
+            const notifications = group.studentIds.map(studentId => 
+                createInternalNotification(
+                    studentId,
+                    "Exam Updated",
+                    `The exam "${title || originalExam?.title}" has been updated/scheduled for group ${group.name}.`,
+                    "EXAM",
+                    `/student/exams`
+                )
+            );
+            await Promise.all(notifications);
+        }
+    }
 
     // Cleanup removed assets
     if (originalExam?.attachmentUrls) {

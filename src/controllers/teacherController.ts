@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma';
+import bcrypt from 'bcrypt';
 
 export const getTeachers = async (req: Request, res: Response) => {
   try {
@@ -105,8 +106,8 @@ export const createTeacher = async (req: Request, res: Response) => {
       return;
     }
 
-    // TODO: Hash password here using bcrypt when auth is fully migrated
-    const hashedPassword = password;
+    // Standardize default password and hash it correctly
+    const hashedPassword = await bcrypt.hash(password || 'password123', 10);
 
     const newTeacher = await prisma.user.create({
       data: {
@@ -115,6 +116,7 @@ export const createTeacher = async (req: Request, res: Response) => {
         email,
         password: hashedPassword,
         role: 'TEACHER',
+        isActive: true,
       },
       select: {
         id: true,
@@ -205,7 +207,7 @@ export const getMyStudents = async (req: Request, res: Response) => {
   try {
     const { teacherId } = req.query;
 
-    if (!teacherId) {
+    if (!teacherId || teacherId === 'undefined') {
       return res.status(400).json({ error: "Teacher ID is required" });
     }
 
@@ -218,14 +220,14 @@ export const getMyStudents = async (req: Request, res: Response) => {
         enrollments: {
           include: {
             student: {
-              select: { id: true, firstName: true, lastName: true, email: true, role: true },
+              select: { id: true, firstName: true, lastName: true, email: true, role: true, profile: { select: { avatar: true } } },
             },
           },
         },
         groups: {
           include: {
             students: {
-              select: { id: true, firstName: true, lastName: true, email: true, role: true },
+              select: { id: true, firstName: true, lastName: true, email: true, role: true, profile: { select: { avatar: true } } },
             },
           },
         },
@@ -233,14 +235,14 @@ export const getMyStudents = async (req: Request, res: Response) => {
     });
 
 
-    // 3. Find groups assigned to this teacher in the schedule
+    // 2. Find groups assigned to this teacher in the schedule
     const scheduledSchedules = await prisma.schedule.findMany({
       where: { assignedToTeacherId: teacherIdStr },
       include: {
         assignedToGroup: {
           include: {
             students: {
-              select: { id: true, firstName: true, lastName: true, email: true, role: true },
+              select: { id: true, firstName: true, lastName: true, email: true, role: true, profile: { select: { avatar: true } } },
             },
           },
         },
@@ -253,18 +255,27 @@ export const getMyStudents = async (req: Request, res: Response) => {
     // Add students from led courses
     ledCourses.forEach((course) => {
       course.enrollments.forEach((enrollment) => {
-        if (enrollment.student) studentMap.set(enrollment.student.id, enrollment.student);
+        if (enrollment.student && enrollment.student.id !== teacherIdStr) {
+          studentMap.set(enrollment.student.id, enrollment.student);
+        }
       });
       course.groups.forEach((group) => {
-        group.students.forEach((s) => studentMap.set(s.id, s));
+        group.students.forEach((s) => {
+          if (s.id !== teacherIdStr) {
+            studentMap.set(s.id, s);
+          }
+        });
       });
     });
-
 
     // Add students from schedules
     scheduledSchedules.forEach((schedule) => {
       if (schedule.assignedToGroup) {
-        schedule.assignedToGroup.students.forEach((s) => studentMap.set(s.id, s));
+        schedule.assignedToGroup.students.forEach((s) => {
+          if (s.id !== teacherIdStr) {
+            studentMap.set(s.id, s);
+          }
+        });
       }
     });
 
@@ -280,48 +291,31 @@ export const getMyGroups = async (req: Request, res: Response) => {
   try {
     const { teacherId } = req.query;
 
-    if (!teacherId) {
-      return res.status(400).json({ error: "Teacher ID is required" });
+    if (!teacherId || teacherId === 'undefined' || String(teacherId).length !== 24) {
+      return res.status(400).json({ error: "Valid Teacher ID is required" });
     }
 
     // 1. Find all courses led by this teacher and their associated groups
     const ledCourses = await prisma.course.findMany({
-      where: {
-        leadById: String(teacherId),
-      },
+      where: { leadById: String(teacherId) },
       include: {
         groups: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-      },
-    });
-
-    // 2. Find groups where the teacher is explicitly added to the group's student/user list (common in some systems)
-    const userGroups = await prisma.group.findMany({
-      where: {
-        studentIds: {
-          has: String(teacherId)
+          include: {
+            _count: { select: { students: true } },
+            courses: { select: { id: true, name: true } }
+          }
         }
-      },
-      select: {
-        id: true,
-        name: true
       }
     });
 
-    // 3. Find groups from schedules assigned to this teacher
+    // 2. Find groups from schedules assigned to this teacher
     const scheduledSchedules = await prisma.schedule.findMany({
-      where: {
-        assignedToTeacherId: String(teacherId)
-      },
+      where: { assignedToTeacherId: String(teacherId) },
       include: {
         assignedToGroup: {
-          select: {
-            id: true,
-            name: true
+          include: {
+            _count: { select: { students: true } },
+            courses: { select: { id: true, name: true } }
           }
         }
       }
@@ -333,17 +327,8 @@ export const getMyGroups = async (req: Request, res: Response) => {
     // Add groups from led courses
     ledCourses.forEach((course) => {
       course.groups.forEach((group) => {
-        if (!groupMap.has(group.id)) {
-          groupMap.set(group.id, group);
-        }
+        if (!groupMap.has(group.id)) groupMap.set(group.id, group);
       });
-    });
-
-    // Add groups where user is a member
-    userGroups.forEach((group) => {
-      if (!groupMap.has(group.id)) {
-        groupMap.set(group.id, group);
-      }
     });
 
     // Add groups from schedules

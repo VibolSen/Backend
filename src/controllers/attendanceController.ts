@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import prisma from '../prisma';
+import { AttendanceStatus } from '@prisma/client';
 
 // Helper to get today's range
 // Helper to get today's range and date string
@@ -15,25 +16,55 @@ const getTodayInfo = () => {
 
 export const getAttendance = async (req: AuthRequest, res: Response) => {
   try {
-    // If query has userId, ensure the requester is an Admin or HR, or is requesting their own data
-    let userId = req.query.userId as string;
+    const { groupId, date, userId: queryUserId } = req.query;
     
     if (!req.user) {
         return res.status(401).json({ error: 'Authentication required' });
     }
 
+    // --- CASE 1: Student Attendance by Group ---
+    if (groupId) {
+        // Restrict to ADMIN, STUDY_OFFICE, or TEACHER
+        const allowedGroupRoles = ['ADMIN', 'STUDY_OFFICE', 'TEACHER'];
+        if (!allowedGroupRoles.includes(req.user.role)) {
+            return res.status(403).json({ error: 'Insufficient permissions to view group attendance' });
+        }
+
+        const fetchDate = date ? new Date(String(date)) : new Date();
+        const startOfDay = new Date(fetchDate);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(fetchDate);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const records = await prisma.attendance.findMany({
+            where: {
+                groupId: String(groupId),
+                date: {
+                    gte: startOfDay,
+                    lte: endOfDay
+                }
+            },
+            select: {
+                studentId: true,
+                status: true
+            }
+        });
+        return res.json(records);
+    }
+
+    // --- CASE 2: Staff Attendance (Existing Logic) ---
+    let userId = queryUserId as string;
+    
     if (userId && userId !== req.user.userId) {
-        // Checking someone else's attendance - require higher role
         const allowedRoles = ['ADMIN', 'HR', 'STUDY_OFFICE'];
         if (!allowedRoles.includes(req.user.role)) {
-            return res.status(403).json({ error: 'Insufficient permissions to view other users attendance' });
+            return res.status(403).json({ error: 'Insufficient permissions' });
         }
     } else {
-        // Default to self
         userId = req.user.userId;
     }
 
-    const { dateStr } = getTodayInfo();
+    const dateStr = date ? String(date) : getTodayInfo().dateStr;
 
     const attendanceRecord = await prisma.staffAttendance.findUnique({
       where: {
@@ -268,7 +299,7 @@ export const bulkFetchAttendance = async (req: AuthRequest, res: Response) => {
 
 export const getSessionAttendance = async (req: AuthRequest, res: Response) => {
     try {
-        const { courseId, date } = req.query;
+        const { courseId, date, groupId } = req.query;
         if (!courseId || !date) {
             return res.status(400).json({ error: "courseId and date are required" });
         }
@@ -284,12 +315,13 @@ export const getSessionAttendance = async (req: AuthRequest, res: Response) => {
                     gte: startOfDay,
                     lte: endOfDay,
                 },
-                student: {
+                groupId: groupId ? String(groupId) : undefined,
+                student: !groupId ? {
                     OR: [
                         { enrollments: { some: { courseId: String(courseId) } } },
                         { groups: { some: { courses: { some: { id: String(courseId) } } } } }
                     ]
-                }
+                } : undefined
             },
             select: {
                 studentId: true,
@@ -337,7 +369,7 @@ export const submitSessionAttendance = async (req: AuthRequest, res: Response) =
                     attendance_unique: {
                         date: startOfDay,
                         studentId: studentId,
-                        groupId: group.id
+                        groupId: record.groupId || group.id
                     }
                 },
                 update: {
@@ -346,7 +378,7 @@ export const submitSessionAttendance = async (req: AuthRequest, res: Response) =
                 create: {
                     date: startOfDay,
                     studentId: studentId,
-                    groupId: group.id,
+                    groupId: record.groupId || group.id,
                     status: status
                 }
             });
@@ -356,6 +388,47 @@ export const submitSessionAttendance = async (req: AuthRequest, res: Response) =
         res.json({ message: "Attendance saved", count: results.length });
     } catch (err) {
         console.error("Failed to submit session attendance:", err);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+};
+
+export const syncStudentAttendance = async (req: AuthRequest, res: Response) => {
+    try {
+        const { groupId, date, attendances } = req.body;
+        if (!groupId || !date || !attendances || !Array.isArray(attendances)) {
+            return res.status(400).json({ error: "groupId, date, and attendances array are required" });
+        }
+
+        const attendanceDate = new Date(date);
+        const startOfDay = new Date(attendanceDate);
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const results = await Promise.all(
+            attendances.map(async (att: { studentId: string; status: AttendanceStatus }) => {
+                return prisma.attendance.upsert({
+                    where: {
+                        attendance_unique: {
+                            date: startOfDay,
+                            studentId: att.studentId,
+                            groupId: groupId
+                        }
+                    },
+                    update: {
+                        status: att.status
+                    },
+                    create: {
+                        date: startOfDay,
+                        studentId: att.studentId,
+                        groupId: groupId,
+                        status: att.status
+                    }
+                });
+            })
+        );
+
+        res.json({ message: "Attendance synchronized successfully", count: results.length });
+    } catch (err) {
+        console.error("Failed to sync student attendance:", err);
         res.status(500).json({ error: "Internal Server Error" });
     }
 };

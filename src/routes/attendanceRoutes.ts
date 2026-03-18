@@ -8,7 +8,8 @@ import {
     bulkFetchAttendance, 
     getSessionAttendance, 
     submitSessionAttendance,
-    checkAttendanceAction 
+    checkAttendanceAction,
+    syncStudentAttendance
 } from '../controllers/attendanceController';
 
 import { authenticateToken, authorizeRoles } from '../middleware/auth';
@@ -35,6 +36,7 @@ router.post('/session', authenticateToken, authorizeRoles('TEACHER', 'ADMIN', 'S
 // --- Administrative Routes (HR/Admin/Study Office) ---
 router.get('/stats', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), getStaffStats);
 router.post('/bulk', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), bulkFetchAttendance);
+router.post('/sync', authenticateToken, authorizeRoles('ADMIN', 'STUDY_OFFICE'), syncStudentAttendance);
 router.post('/manual', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), manualUpdate);
 
 export default router;

@@ -14,9 +14,9 @@ const router = Router();
  *   description: User and Profile management API
  */
 
-// --- User Management (Restricted to ADMIN/HR/STUDY_OFFICE) ---
-router.get('/', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), getUsers);
-router.get('/:id', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), getUser);
+// --- User Management ---
+router.get('/', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE', 'FINANCE'), getUsers);
+router.get('/:id', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE', 'FINANCE', 'TEACHER'), getUser);
 router.post('/', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), createUser);
 router.put('/:id', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), updateUser);
 router.delete('/:id', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), deleteUser);

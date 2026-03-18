@@ -183,10 +183,10 @@ export const updateAssignment = async (req: Request, res: Response) => {
     
     finalUrls = [...finalUrls, ...uploadedUrls];
 
-    // Cloudinary Cleanup: Find removed URLs
+    // Cloudinary Cleanup & Notification Check: Find original state
     const originalAssignment = await (prisma.assignment as any).findUnique({
         where: { id: String(id) },
-        select: { attachmentUrls: true }
+        select: { attachmentUrls: true, status: true, groupId: true, title: true }
     });
 
     const updatedAssignment = await (prisma.assignment as any).update({
@@ -205,6 +205,27 @@ export const updateAssignment = async (req: Request, res: Response) => {
         attachmentUrls: finalUrls
       },
     });
+    
+    // Notify students if status changed to PUBLISHED or if it's already PUBLISHED and title/description changed
+    if (status === 'PUBLISHED') {
+        const group = await prisma.group.findUnique({
+            where: { id: groupId || originalAssignment?.groupId },
+            select: { studentIds: true, name: true }
+        });
+
+        if (group?.studentIds) {
+            const notifications = group.studentIds.map(studentId => 
+                createInternalNotification(
+                    studentId,
+                    originalAssignment?.status !== 'PUBLISHED' ? "New Assignment Published" : "Assignment Updated",
+                    `The assignment "${title || originalAssignment?.title}" has been ${originalAssignment?.status !== 'PUBLISHED' ? 'published' : 'updated'} for group ${group.name}.`,
+                    "ASSIGNMENT",
+                    `/student/assignments/${updatedAssignment.id}`
+                )
+            );
+            await Promise.all(notifications);
+        }
+    }
     
     // Cleanup removed assets
     if (originalAssignment?.attachmentUrls) {

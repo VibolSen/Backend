@@ -39,6 +39,45 @@ const getOrCreateBatchId = async (generation: string | undefined, departmentId: 
 export const getUser = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+    const requester = req.user;
+
+    if (!requester) return res.status(401).json({ error: "Unauthorized" });
+
+    // 1. Basic Auth: requester can always see themselves
+    // 2. Roles: ADMIN, HR, STUDY_OFFICE, FINANCE can see anyone
+    const isSelf = requester.userId === id;
+    const hasElevatedRole = ['ADMIN', 'HR', 'STUDY_OFFICE', 'FINANCE'].includes(requester.role);
+
+    if (!isSelf && !hasElevatedRole) {
+      if (requester.role === 'TEACHER') {
+        // Teacher Security: Can only view students in their assigned groups/courses
+        const targetUser = await prisma.user.findUnique({
+          where: { id: String(id) },
+          select: { role: true, groupIds: true }
+        });
+
+        if (!targetUser || targetUser.role !== 'STUDENT') {
+          return res.status(403).json({ error: "Access denied." });
+        }
+
+        // Check if teacher leads any course assigned to the student's groups
+        const teacherCourses = await prisma.course.findMany({
+          where: { leadById: requester.userId },
+          select: { groupIds: true }
+        });
+
+        const teacherGroupIds = new Set(teacherCourses.flatMap(c => c.groupIds));
+        const hasAccess = targetUser.groupIds.some(gid => teacherGroupIds.has(gid));
+
+        if (!hasAccess) {
+          return res.status(403).json({ error: "Access denied. Student is not in your assigned groups." });
+        }
+      } else {
+        // Any other role (like STUDENT) trying to see another user
+        return res.status(403).json({ error: "Access denied." });
+      }
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: String(id) },
       include: {
@@ -111,7 +150,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
     }
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(password || '123456', 10);
+    const hashedPassword = await bcrypt.hash(password || 'password123', 10);
 
     let studentId: string | undefined = undefined;
     if (role === 'STUDENT') {

@@ -1,5 +1,15 @@
 import { Router } from 'express';
-import { getInvoices, getInvoiceById, createInvoice, deleteInvoice, getFees, createFee, updateFee, deleteFee, getPayments, createPayment, updatePayment, deletePayment, getExpenses, createExpense, updateExpense, deleteExpense, generatePaymentQR, checkBakongStatus, bakongCallback } from '../controllers/financialController';
+import { 
+    getInvoices, getInvoiceById, createInvoice, updateInvoice, getInvoiceLogs, deleteInvoice, 
+    getFees, createFee, updateFee, deleteFee, 
+    getPayments, createPayment, updatePayment, deletePayment, 
+    getExpenses, createExpense, updateExpense, deleteExpense, 
+    generatePaymentQR, checkBakongStatus, bakongCallback,
+    getPayrolls, generatePayrolls, updatePayrollStatus,
+    getUserBenefits, updateUserBenefit,
+    getBudgets, getBudgetById, createBudget, addBudgetItem, sendReminders,
+    getStudentPaymentReport
+} from '../controllers/financialController';
 import { authenticateToken, authorizeRoles } from '../middleware/auth';
 
 const router = Router();
@@ -17,90 +27,13 @@ router.use(authenticateToken);
  *   name: Financial
  *   description: Invoices, Fees, and Payments management API
  */
-/**
- * @swagger
- * /api/financial/invoices:
- *   get:
- *     summary: Get all invoices
- *     tags: [Financial]
- *     responses:
- *       200:
- *         description: List of invoices
- *   post:
- *     summary: Create an invoice
- *     tags: [Financial]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *     responses:
- *       201:
- *         description: Invoice created
- *
- * /api/financial/fees:
- *   get:
- *     summary: Get all fees
- *     tags: [Financial]
- *     responses:
- *       200:
- *         description: List of fees
- *
- * /api/financial/payments:
- *   post:
- *     summary: Record a payment
- *     tags: [Financial]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *     responses:
- *       201:
- *         description: Payment recorded
- *
- * /api/financial/expenses:
- *   get:
- *     summary: Get all expenses
- *     tags: [Financial]
- *     responses:
- *       200:
- *         description: List of expenses
- *   post:
- *     summary: Create an expense
- *     tags: [Financial]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *     responses:
- *       201:
- *         description: Expense created
- *
- * /api/financial/expenses/{id}:
- *   delete:
- *     summary: Delete an expense
- *     tags: [Financial]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Expense deleted
- */
+
 // Management Routes (Admin & Finance)
 router.get('/invoices', authorizeRoles('ADMIN', 'FINANCE', 'STUDENT'), getInvoices);
 router.get('/invoices/:id', authorizeRoles('ADMIN', 'FINANCE', 'STUDENT'), getInvoiceById);
 router.post('/invoices', authorizeRoles('ADMIN', 'FINANCE'), createInvoice);
-router.put('/invoices/:id', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').updateInvoice(req, res));
-router.get('/invoices/:id/logs', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').getInvoiceLogs(req, res));
+router.put('/invoices/:id', authorizeRoles('ADMIN', 'FINANCE'), updateInvoice);
+router.get('/invoices/:id/logs', authorizeRoles('ADMIN', 'FINANCE'), getInvoiceLogs);
 router.delete('/invoices/:id', authorizeRoles('ADMIN', 'FINANCE'), deleteInvoice);
 
 router.get('/fees', authorizeRoles('ADMIN', 'FINANCE', 'STUDENT'), getFees);
@@ -118,21 +51,24 @@ router.post('/expenses', authorizeRoles('ADMIN', 'FINANCE'), createExpense);
 router.put('/expenses/:id', authorizeRoles('ADMIN', 'FINANCE'), updateExpense);
 router.delete('/expenses/:id', authorizeRoles('ADMIN', 'FINANCE'), deleteExpense);
 
+// --- Reports ---
+router.get('/reports/student-payments', authorizeRoles('ADMIN', 'FINANCE'), getStudentPaymentReport);
+
 // --- Payroll Management ---
-router.get('/payrolls', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').getPayrolls(req, res));
-router.post('/payrolls/generate', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').generatePayrolls(req, res));
-router.put('/payrolls/:id', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').updatePayrollStatus(req, res));
+router.get('/payrolls', authorizeRoles('ADMIN', 'FINANCE'), getPayrolls);
+router.post('/payrolls/generate', authorizeRoles('ADMIN', 'FINANCE'), generatePayrolls);
+router.put('/payrolls/:id', authorizeRoles('ADMIN', 'FINANCE'), updatePayrollStatus);
 
 // --- User Benefits ---
-router.get('/benefits', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').getUserBenefits(req, res));
-router.post('/benefits', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').updateUserBenefit(req, res));
+router.get('/benefits', authorizeRoles('ADMIN', 'FINANCE'), getUserBenefits);
+router.post('/benefits', authorizeRoles('ADMIN', 'FINANCE'), updateUserBenefit);
 
 // --- Budgeting ---
-router.get('/budgets', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').getBudgets(req, res));
-router.get('/budgets/:id', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').getBudgetById(req, res));
-router.post('/budgets', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').createBudget(req, res));
-router.post('/budgets/items', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').addBudgetItem(req, res));
-router.post('/reminders/send', authorizeRoles('ADMIN', 'FINANCE'), (req, res) => require('../controllers/financialController').sendReminders(req, res));
+router.get('/budgets', authorizeRoles('ADMIN', 'FINANCE'), getBudgets);
+router.get('/budgets/:id', authorizeRoles('ADMIN', 'FINANCE'), getBudgetById);
+router.post('/budgets', authorizeRoles('ADMIN', 'FINANCE'), createBudget);
+router.post('/budgets/items', authorizeRoles('ADMIN', 'FINANCE'), addBudgetItem);
+router.post('/reminders/send', authorizeRoles('ADMIN', 'FINANCE'), sendReminders);
 
 // Public/Student Financial Interaction
 router.post('/bakong-qr', authorizeRoles('ADMIN', 'FINANCE', 'STUDENT'), generatePaymentQR);

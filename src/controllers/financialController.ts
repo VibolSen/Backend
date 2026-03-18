@@ -67,7 +67,7 @@ export const getInvoiceById = async (req: AuthRequest, res: Response) => {
 
 export const createInvoice = async (req: AuthRequest, res: Response) => {
   try {
-    const { studentId, issueDate, dueDate, totalAmount, items } = req.body;
+    const { studentId, issueDate, dueDate, totalAmount, items, period, academicYear, semester } = req.body;
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
     const actorId = req.user.userId;
     
@@ -81,7 +81,7 @@ export const createInvoice = async (req: AuthRequest, res: Response) => {
     // Calculate total from items to be safe, or use provided
     const calculatedTotal = formattedItems.reduce((acc: number, item: any) => acc + item.amount, 0);
 
-    console.log("Creating Invoice with:", { studentId, issueDate, dueDate, calculatedTotal });
+    console.log("Creating Invoice with:", { studentId, issueDate, dueDate, calculatedTotal, period });
 
     const invoice = await prisma.invoice.create({
       data: {
@@ -89,6 +89,11 @@ export const createInvoice = async (req: AuthRequest, res: Response) => {
         issueDate: new Date(issueDate),
         dueDate: new Date(dueDate),
         totalAmount: calculatedTotal, 
+        currency: req.body.currency || "USD",
+        status: "SENT",
+        period: period || "SEMESTER",
+        academicYear: academicYear ? Number(academicYear) : null,
+        semester: semester ? Number(semester) : null,
         items: {
           create: formattedItems
         }
@@ -131,7 +136,7 @@ export const createInvoice = async (req: AuthRequest, res: Response) => {
 export const updateInvoice = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
-        const { studentId, issueDate, dueDate, items } = req.body;
+        const { studentId, issueDate, dueDate, items, period, academicYear, semester } = req.body;
         if (!req.user) return res.status(401).json({ error: "Unauthorized" });
         const actorId = req.user.userId;
 
@@ -155,6 +160,10 @@ export const updateInvoice = async (req: AuthRequest, res: Response) => {
                 issueDate: new Date(issueDate),
                 dueDate: new Date(dueDate),
                 totalAmount: calculatedTotal,
+                currency: req.body.currency || "USD",
+                period: period || "SEMESTER",
+                academicYear: academicYear ? Number(academicYear) : null,
+                semester: semester ? Number(semester) : null,
                 items: {
                     create: formattedItems
                 }
@@ -261,12 +270,13 @@ export const getFees = async (req: AuthRequest, res: Response) => {
 
 export const createFee = async (req: AuthRequest, res: Response) => {
     try {
-        const { name, description, amount } = req.body;
+        const { name, description, amount, currency } = req.body;
         const fee = await prisma.fee.create({
             data: {
                 name,
                 description,
-                amount: parseFloat(amount)
+                amount: parseFloat(amount),
+                currency: currency || "USD"
             }
         });
         res.status(201).json(fee);
@@ -279,13 +289,14 @@ export const createFee = async (req: AuthRequest, res: Response) => {
 export const updateFee = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
-        const { name, description, amount } = req.body;
+        const { name, description, amount, currency } = req.body;
         const fee = await prisma.fee.update({
             where: { id: String(id) },
             data: {
                 name,
                 description,
-                amount: parseFloat(amount)
+                amount: parseFloat(amount),
+                currency: currency || "USD"
             }
         });
         res.json(fee);
@@ -330,8 +341,18 @@ export const getPayments = async (req: AuthRequest, res: Response) => {
 
 export const createPayment = async (req: AuthRequest, res: Response) => {
     try {
-        const { invoiceId, amount, paymentDate, paymentMethod, transactionId, notes } = req.body;
+        const { invoiceId, amount, paymentDate, paymentMethod, transactionId, notes, currency } = req.body;
         
+        // Fetch the invoice to get its default currency if none was provided
+        const invoice = await prisma.invoice.findUnique({
+            where: { id: invoiceId },
+            include: { payments: true }
+        });
+
+        if (!invoice) {
+            return res.status(404).json({ error: "Invoice not found" });
+        }
+
         // Create the payment record
         const payment = await prisma.payment.create({
             data: {
@@ -340,32 +361,24 @@ export const createPayment = async (req: AuthRequest, res: Response) => {
                 paymentDate: new Date(paymentDate),
                 paymentMethod,
                 transactionId,
+                currency: currency || invoice.currency || "USD",
                 notes
             }
         });
         
-        // 1. Fetch the invoice with its current payments and totalAmount
-        const invoice = await prisma.invoice.findUnique({
-            where: { id: invoiceId },
-            include: { payments: true }
-        });
-
-        if (invoice) {
-            // 2. Calculate total paid including the new payment
-            const totalPaid = invoice.payments.reduce((sum: number, p) => sum + p.amount, 0);
-            
-            // 3. Update status if fully paid
-            if (totalPaid >= invoice.totalAmount) {
-                await prisma.invoice.update({
-                    where: { id: invoiceId },
-                    data: { status: "PAID" }
-                });
-            } else if (totalPaid > 0 && invoice.status !== "PAID") {
+        // 2. Calculate total paid including the new payment
+        const totalPaid = (invoice.payments.reduce((sum: number, p) => sum + p.amount, 0)) + Number(amount);
+        
+        // 3. Update status if fully paid
+        if (totalPaid >= invoice.totalAmount) {
+            await prisma.invoice.update({
+                where: { id: invoiceId },
+                data: { status: "PAID" }
+            });
+        } else if (totalPaid > 0 && invoice.status !== "PAID") {
                  // Optional: Mark as partially paid if you have that status, or keep as SENT/OVERDUE
                  // For now, only marking PAID when full.
             }
-        }
-        
         res.status(201).json(payment);
     } catch (err) {
         console.error("Failed to create payment:", err);
@@ -376,7 +389,7 @@ export const createPayment = async (req: AuthRequest, res: Response) => {
 export const updatePayment = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
-        const { amount, paymentDate, paymentMethod, transactionId, notes } = req.body;
+        const { amount, paymentDate, paymentMethod, transactionId, notes, currency } = req.body;
         const payment = await prisma.payment.update({
             where: { id: String(id) },
             data: {
@@ -384,6 +397,7 @@ export const updatePayment = async (req: AuthRequest, res: Response) => {
                 paymentDate: new Date(paymentDate),
                 paymentMethod,
                 transactionId,
+                currency,
                 notes
             }
         });
@@ -471,18 +485,36 @@ export const deleteExpense = async (req: AuthRequest, res: Response) => {
 };
 
 export const generatePaymentQR = async (req: AuthRequest, res: Response) => {
+    console.log(">>>>>>>>>> [INCOMING REQUEST] generatePaymentQR <<<<<<<<<<");
     try {
         const { amount, currency = "USD", invoiceId } = req.body;
         
         console.log("Configuring KHQR for Invoice:", invoiceId);
+        
+        // Fetch invoice to determine base currency
+        const invoice = await prisma.invoice.findUnique({
+            where: { id: String(invoiceId) }
+        });
+
+        if (!invoice) {
+            return res.status(404).json({ error: "Invoice not found" });
+        }
+
         const accountID = process.env.KHQR_ACCOUNT_ID?.trim() || "ishinvin@devb"; 
         const merchantName = process.env.KHQR_MERCHANT_NAME?.trim() || "Step Academy"; 
 
-        const qrCurrency = currency === "KHR" ? CURRENCY.KHR : CURRENCY.USD;
+        const targetCurrency = currency === "KHR" ? CURRENCY.KHR : CURRENCY.USD;
+        const baseCurrency = invoice.currency === "KHR" ? CURRENCY.KHR : CURRENCY.USD;
         
         let finalAmount = Number(amount);
-        if (qrCurrency === CURRENCY.KHR) {
-             finalAmount = Math.ceil(finalAmount * 4100); 
+
+        const exchangeRate = Number(process.env.EXCHANGE_RATE_USD_KHR || 4100);
+
+        // Logic: Convert from Base Currency to Target QR Currency
+        if (baseCurrency === CURRENCY.USD && targetCurrency === CURRENCY.KHR) {
+            finalAmount = Math.ceil(finalAmount * exchangeRate); 
+        } else if (baseCurrency === CURRENCY.KHR && targetCurrency === CURRENCY.USD) {
+            finalAmount = Number((finalAmount / exchangeRate).toFixed(2));
         }
         
         // IMPORTANT: KHQR Subtag 62.01 (Bill Number) has a strict length limit (usually 15 chars).
@@ -493,7 +525,7 @@ export const generatePaymentQR = async (req: AuthRequest, res: Response) => {
         const payload = {
             tag: TAG.INDIVIDUAL,
             accountID: accountID,
-            currency: qrCurrency,
+            currency: targetCurrency,
             amount: finalAmount,
             merchantName: merchantName,
             merchantCity: "Phnom Penh",
@@ -521,9 +553,10 @@ export const generatePaymentQR = async (req: AuthRequest, res: Response) => {
 };
 
 export const checkBakongStatus = async (req: AuthRequest, res: Response) => {
+    console.log(">>>>>>>>>> [INCOMING REQUEST] checkBakongStatus <<<<<<<<<<");
     try {
         const { invoiceId } = req.params;
-        const { md5 } = req.query; 
+        const { md5 } = req.query;
 
         console.log(`[Status Check] Polling Invoice: ${invoiceId} | MD5: ${md5 || 'Missing'}`);
 
@@ -539,12 +572,39 @@ export const checkBakongStatus = async (req: AuthRequest, res: Response) => {
             return res.json({ status: "PAID", isPaid: true });
         }
 
+        const exchangeRate = Number(process.env.EXCHANGE_RATE_USD_KHR || 4100);
+
         // 2. If we have an MD5, check the REAL Bakong API
         if (md5 && process.env.BAKONG_API_TOKEN) {
             try {
-                // Feature Check: Support older Node.js without native fetch
+                let data: any;
                 if (typeof fetch === 'undefined') {
-                    console.warn(" WARNING: native fetch not available. Skipping real-time Bakong check.");
+                    // Fallback using native https module for Node.js < 18
+                    data = await new Promise((resolve, reject) => {
+                        const https = require('https');
+                        const url = new URL(`${process.env.BAKONG_API_URL || 'https://api-bakong.nbc.gov.kh/v1'}/check_transaction_by_md5`);
+                        const body = JSON.stringify({ md5 });
+                        const req = https.request({
+                            hostname: url.hostname,
+                            path: url.pathname,
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${process.env.BAKONG_API_TOKEN}`,
+                                'Content-Type': 'application/json',
+                                'Content-Length': Buffer.byteLength(body)
+                            }
+                        }, (res: any) => {
+                            let rawData = '';
+                            res.on('data', (chunk: any) => rawData += chunk);
+                            res.on('end', () => {
+                                try { resolve(JSON.parse(rawData)); }
+                                catch (e) { reject(e); }
+                            });
+                        });
+                        req.on('error', (e: any) => reject(e));
+                        req.write(body);
+                        req.end();
+                    });
                 } else {
                     const bakongResponse = await fetch(`${process.env.BAKONG_API_URL || 'https://api-bakong.nbc.gov.kh/v1'}/check_transaction_by_md5`, {
                         method: 'POST',
@@ -554,38 +614,68 @@ export const checkBakongStatus = async (req: AuthRequest, res: Response) => {
                         },
                         body: JSON.stringify({ md5 })
                     });
+                    data = await bakongResponse.json();
+                }
 
-                    const data = await bakongResponse.json();
+                console.log(`[Bakong API] Response for MD5 ${md5}:`, JSON.stringify(data));
+                
+                const statusStr = data.data?.status?.toUpperCase();
+                if (data.responseCode === 0 && data.data && (statusStr === "SUCCESS" || statusStr === "PAID")) {
+                    const txData = data.data;
+
+                    // --- SECURITY: Prevent Duplicate MD5 Processing ---
+                    const existingPayment = await (prisma as any).payment.findFirst({
+                        where: { md5: String(md5) }
+                    });
+
+                    if (existingPayment) {
+                        console.log(` ⚠️ Ignore double processing: Payment MD5 ${md5} already confirmed.`);
+                        return res.json({ status: invoice.status, isPaid: false });
+                    }
+
+                    console.log(` ✅ Bank Verified via MD5: ${md5}. Amount: ${txData.amount} ${txData.currency}. Hash: ${txData.hash || 'N/A'}`);
                     
-                    // If Bakong confirms the payment is successful
-                    if (data.responseCode === 0 && data.data && data.data.status === "SUCCESS") {
-                        const txData = data.data;
-                        console.log(` ✅ Bank Verified via MD5: ${md5}`);
-                        
-                        // Create the payment record in our DB
-                        await (prisma as any).payment.create({
-                            data: {
-                                invoiceId: invoice.id,
-                                amount: Number(txData.amount),
-                                currency: txData.currency || "USD",
-                                md5: String(md5),
-                                paymentDate: new Date(),
-                                paymentMethod: "BANK_TRANSFER",
-                                transactionId: txData.hash || txData.externalRef || `NB-${Date.now()}`,
-                                senderAccount: txData.senderAccount || "N/A",
-                                senderName: txData.senderName || "BAKONG_USER",
-                                receiverAccount: process.env.KHQR_ACCOUNT_ID || "vibol_sen@bkrt",
-                                notes: `Verified via Bakong Open API`
-                            }
-                        });
+                    // Create the payment record in our DB
+                    await (prisma as any).payment.create({
+                        data: {
+                            invoiceId: invoice.id,
+                            amount: Number(txData.amount),
+                            currency: txData.currency || "USD",
+                            md5: String(md5),
+                            paymentDate: new Date(),
+                            paymentMethod: "BANK_TRANSFER",
+                            senderAccount: txData.fromAccountId || txData.senderAccount || "N/A",
+                            senderName: txData.senderName || "BAKONG_USER",
+                            receiverAccount: txData.toAccountId || process.env.KHQR_ACCOUNT_ID || "vibol_sen@bkrt",
+                            notes: `Verified via Bakong Open API`
+                        }
+                    });
 
-                        // Update Invoice to PAID
+                    // SECURITY: Validate Total Paid vs Invoice Amount
+                    const updatedInvoice = await prisma.invoice.findUnique({
+                        where: { id: invoice.id },
+                        include: { payments: true }
+                    });
+
+                    const totalPaid = (updatedInvoice?.payments || []).reduce((sum: number, p: any) => {
+                        let normalizedAmount = p.amount;
+                        if (p.currency === "KHR" && updatedInvoice!.currency === "USD") {
+                            normalizedAmount = normalizedAmount / exchangeRate;
+                        } else if (p.currency === "USD" && updatedInvoice!.currency === "KHR") {
+                            normalizedAmount = normalizedAmount * exchangeRate;
+                        }
+                        return sum + normalizedAmount;
+                    }, 0);
+
+                    if (totalPaid >= (updatedInvoice!.totalAmount - 0.01)) {
                         await prisma.invoice.update({
                             where: { id: invoice.id },
                             data: { status: "PAID" }
                         });
-
                         return res.json({ status: "PAID", isPaid: true });
+                    } else {
+                        console.log(` INFO: Partial payment for ${invoice.id}, Total Paid (Normalized): ${totalPaid}. Required: ${updatedInvoice!.totalAmount}`);
+                        return res.json({ status: invoice.status, isPaid: false, totalPaid });
                     }
                 }
             } catch (apiErr) {
@@ -593,11 +683,21 @@ export const checkBakongStatus = async (req: AuthRequest, res: Response) => {
             }
         }
 
-        // 3. Otherwise return current local status
+        // 3. Otherwise return current local status (normalized)
+        const currentTotalPaid = invoice.payments.reduce((sum: number, p: any) => {
+            let normalizedAmount = p.amount;
+            if (p.currency === "KHR" && invoice.currency === "USD") {
+                normalizedAmount = normalizedAmount / exchangeRate;
+            } else if (p.currency === "USD" && invoice.currency === "KHR") {
+                normalizedAmount = normalizedAmount * exchangeRate;
+            }
+            return sum + normalizedAmount;
+        }, 0);
+
         res.json({
             status: invoice.status,
             isPaid: false,
-            totalPaid: invoice.payments.reduce((sum: number, p) => sum + p.amount, 0)
+            totalPaid: currentTotalPaid
         });
     } catch (err) {
         console.error("Status Check Error:", err);
@@ -607,9 +707,19 @@ export const checkBakongStatus = async (req: AuthRequest, res: Response) => {
 
 export const bakongCallback = async (req: AuthRequest, res: Response) => {
     try {
-        console.log(" Bakong Callback Inbound Payload:", JSON.stringify(req.body, null, 2));
+        console.log(" [Webhook] Bakong Callback Payload:", JSON.stringify(req.body, null, 2));
         
-        const { invoiceId, billNumber, billNo, externalRef, amount, transactionId, md5, senderAccount, senderName, currency } = req.body;
+        // --- PRODUCTION SECURITY MEASURE ---
+        // Verify this request actually came from the National Bank of Cambodia (Bakong API)
+        const authHeader = req.headers.authorization;
+        if (process.env.BAKONG_WEBHOOK_SECRET) {
+            if (!authHeader || authHeader !== `Bearer ${process.env.BAKONG_WEBHOOK_SECRET}`) {
+                console.warn(` 🚨 UNAUTHORIZED BAKONG WEBHOOK ATTEMPT FROM IP: ${req.ip}`);
+                return res.status(401).json({ error: "Unauthorized webhook signature" });
+            }
+        }
+
+        const { invoiceId, billNumber, billNo, externalRef, amount, transactionId, hash, md5, senderAccount, senderName, currency } = req.body;
         
         // Identify the actual invoice ID - Check all common bank field names
         let targetInvoiceId = invoiceId || billNumber || billNo || externalRef;
@@ -619,7 +729,7 @@ export const bakongCallback = async (req: AuthRequest, res: Response) => {
             return res.status(400).json({ error: "Missing invoice identifier" });
         }
 
-        console.log(" ✅ Processing Bakong Callback for Invoice:", targetInvoiceId);
+        console.log(` ✅ Processing Bakong Callback for Invoice: ${targetInvoiceId}. Hash: ${hash || transactionId || 'N/A'}`);
 
         // Lookup: If it's a short ID (12 chars), find by suffix. If 24, find direct.
         let invoice;
@@ -643,6 +753,17 @@ export const bakongCallback = async (req: AuthRequest, res: Response) => {
             return res.status(404).json({ error: "Invoice not found" });
         }
 
+        // --- SECURITY: Duplicate MD5 Check ---
+        if (md5) {
+            const existingPayment = await (prisma as any).payment.findFirst({
+                where: { md5: String(md5) }
+            });
+            if (existingPayment) {
+                console.log(` ⚠️ Ignore double webhook: Payment MD5 ${md5} already processed.`);
+                return res.json({ success: true, message: "Already processed" });
+            }
+        }
+
         // 2. Create the payment
         await (prisma as any).payment.create({ 
             data: {
@@ -652,10 +773,10 @@ export const bakongCallback = async (req: AuthRequest, res: Response) => {
                 md5: md5 || "N/A",
                 paymentDate: new Date(),
                 paymentMethod: "BANK_TRANSFER",
-                transactionId: transactionId || `BK-${Date.now()}`,
-                senderAccount: senderAccount || "N/A",
+                transactionId: transactionId || hash || externalRef || `BK-${Date.now()}`,
+                senderAccount: senderAccount || req.body.fromAccountId || "N/A",
                 senderName: senderName || "BAKONG_USER",
-                receiverAccount: process.env.KHQR_ACCOUNT_ID || "vibol_sen@bkrt",
+                receiverAccount: req.body.toAccountId || process.env.KHQR_ACCOUNT_ID || "vibol_sen@bkrt",
                 notes: `Bakong Notification Received`
             }
         });
@@ -666,16 +787,26 @@ export const bakongCallback = async (req: AuthRequest, res: Response) => {
             include: { payments: true }
         });
 
-        const totalPaid = (currentInvoices?.payments || []).reduce((sum: number, p: any) => sum + p.amount, 0);
+        const exchangeRate = Number(process.env.EXCHANGE_RATE_USD_KHR || 4100);
+        
+        const totalPaid = (currentInvoices?.payments || []).reduce((sum: number, p: any) => {
+            let normalizedAmount = p.amount;
+            if (p.currency === "KHR" && currentInvoices!.currency === "USD") {
+                normalizedAmount = normalizedAmount / exchangeRate;
+            } else if (p.currency === "USD" && currentInvoices!.currency === "KHR") {
+                normalizedAmount = normalizedAmount * exchangeRate;
+            }
+            return sum + normalizedAmount;
+        }, 0);
         
         if (totalPaid >= (invoice.totalAmount - 0.01)) {
             await prisma.invoice.update({
                 where: { id: invoice.id },
                 data: { status: "PAID" }
             });
-            console.log(` SUCCESS: Invoice ${invoice.id} marked as PAID`);
+            console.log(` SUCCESS: Invoice ${invoice.id} marked as PAID (Normalized total: ${totalPaid})`);
         } else {
-            console.log(` INFO: Partial payment for ${invoice.id}, Total Paid: ${totalPaid}`);
+            console.log(` INFO: Partial payment for ${invoice.id}, Total Paid (Normalized): ${totalPaid}`);
         }
         
         res.json({ success: true, message: "OK" });
@@ -922,5 +1053,111 @@ export const sendReminders = async (req: AuthRequest, res: Response) => {
     } catch (err) {
         console.error("Failed to send reminders:", err);
         res.status(500).json({ error: "Failed to send reminders" });
+    }
+};
+
+// --- Reports ---
+
+export const getStudentPaymentReport = async (req: AuthRequest, res: Response) => {
+    try {
+        const { status, academicYear, period, semester } = req.query;
+        
+        // 1. Fetch all ACTIVE students, optionally filtered by academic year
+        const studentWhereClause: any = { role: 'STUDENT', isActive: true };
+        if (academicYear) {
+            studentWhereClause.profile = { academicYear: Number(academicYear) };
+        }
+
+        const students = await prisma.user.findMany({
+            where: studentWhereClause,
+            select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                profile: {
+                    select: {
+                        studentId: true,
+                        academicYear: true,
+                        batch: { select: { name: true } }
+                    }
+                },
+                invoices: {
+                    include: { payments: true },
+                    orderBy: { createdAt: 'desc' }
+                }
+            }
+        });
+
+        let reportData: any[] = [];
+
+        // 2. Process each student
+        for (const student of students) {
+            let matchingInvoices = student.invoices;
+
+            // Apply invoice-level filters if they exist
+            if (period) {
+                matchingInvoices = matchingInvoices.filter(inv => inv.period === period);
+            }
+            if (semester) {
+                matchingInvoices = matchingInvoices.filter(inv => inv.semester === Number(semester));
+            }
+
+            // If the student has matching invoices, add them to the report
+            if (matchingInvoices.length > 0) {
+                for (const inv of matchingInvoices) {
+                    const totalPaid = inv.payments.reduce((sum: number, p: any) => sum + p.amount, 0);
+                    reportData.push({
+                        invoiceId: inv.id,
+                        studentId: student.profile?.studentId || "N/A",
+                        studentName: `${student.firstName} ${student.lastName}`,
+                        email: student.email,
+                        academicYear: inv.academicYear || student.profile?.academicYear || 1,
+                        batch: student.profile?.batch?.name || "N/A",
+                        period: inv.period,
+                        semester: inv.semester || null,
+                        totalAmount: inv.totalAmount,
+                        totalPaid: totalPaid,
+                        balance: inv.totalAmount - totalPaid,
+                        currency: inv.currency,
+                        status: inv.status,
+                        dueDate: inv.dueDate,
+                        issueDate: inv.issueDate
+                    });
+                }
+            } else {
+                // IMPORTANT: If student has ZERO matching invoices, they are UNBILLED
+                // We only add UNBILLED if there wasn't a strict invoice-only filter 
+                // (like filtering by a specific semester might exclude an unbilled student if they just joined)
+                // But generally, unbilled students should always show up if they match the academic year.
+                reportData.push({
+                    invoiceId: `unbilled-${student.id}`, // Mock ID for React key
+                    studentId: student.profile?.studentId || "N/A",
+                    studentName: `${student.firstName} ${student.lastName}`,
+                    email: student.email,
+                    academicYear: student.profile?.academicYear || 1,
+                    batch: student.profile?.batch?.name || "N/A",
+                    period: "N/A",
+                    semester: null,
+                    totalAmount: 0,
+                    totalPaid: 0,
+                    balance: 0,
+                    currency: "USD",
+                    status: "UNBILLED",
+                    dueDate: null,
+                    issueDate: null
+                });
+            }
+        }
+
+        // 3. Finally, apply the in-memory status filter
+        if (status) {
+            reportData = reportData.filter(row => row.status === status);
+        }
+
+        res.json(reportData);
+    } catch (err: any) {
+        console.error("Failed to generate student payment report:", err);
+        res.status(500).json({ error: "Failed to generate report", details: err.message });
     }
 };

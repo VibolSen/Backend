@@ -44,31 +44,12 @@ export const getTeacherStats = async (req: Request, res: Response) => {
 
     const teacherIdStr = teacherId as string;
 
-    // 1. Get Groups related to this teacher (via Schedule OR Course Lead OR Monitor)
-    const teacherGroups = await prisma.group.findMany({
-      where: {
-        OR: [
-          { schedules: { some: { assignedToTeacherId: teacherIdStr } } },
-          { courses: { some: { leadById: teacherIdStr } } }
-        ]
-      },
-      select: { id: true, studentIds: true, name: true }
-    });
-
-    // 2. Distinct students in these groups
-    const studentIdsSet = new Set<string>();
-    teacherGroups.forEach(g => {
-      g.studentIds.forEach(sid => studentIdsSet.add(sid));
-    });
-    const studentsCount = studentIdsSet.size;
-
-    // 3. Get all courses this teacher is involved with
+    // Get all courses this teacher is involved with
     const teacherCourses = await prisma.course.findMany({
       where: {
         OR: [
           { leadById: teacherIdStr },
-          { schedules: { some: { assignedToTeacherId: teacherIdStr } } },
-          { groups: { some: { studentIds: { has: teacherIdStr } } } }
+          { schedules: { some: { assignedToTeacherId: teacherIdStr } } }
         ]
       },
       include: {
@@ -78,8 +59,12 @@ export const getTeacherStats = async (req: Request, res: Response) => {
             groups: true
           }
         },
+        enrollments: {
+          select: { studentId: true }
+        },
         groups: {
           select: {
+            id: true,
             studentIds: true
           }
         }
@@ -87,6 +72,49 @@ export const getTeacherStats = async (req: Request, res: Response) => {
     });
 
     const coursesCount = teacherCourses.length;
+
+    // 2. Sync logic with teacherController's getMyStudents for perfect consistency
+    const scheduledSchedules = await prisma.schedule.findMany({
+      where: { assignedToTeacherId: teacherIdStr },
+      include: {
+        assignedToGroup: {
+          select: { id: true, studentIds: true }
+        }
+      }
+    });
+
+    const studentIdsSet = new Set<string>();
+
+    // Add students from led courses
+    teacherCourses.forEach((course) => {
+      if (course.leadById === teacherIdStr) {
+        course.enrollments.forEach((e) => studentIdsSet.add(e.studentId));
+        course.groups.forEach((g) => g.studentIds.forEach((sid) => studentIdsSet.add(sid)));
+      }
+    });
+
+    // Add students from scheduled groups
+    scheduledSchedules.forEach((schedule) => {
+      if (schedule.assignedToGroup) {
+        schedule.assignedToGroup.studentIds.forEach((sid) => studentIdsSet.add(sid));
+      }
+    });
+
+    // CRITICAL: Exclude the teacher themselves from the student count and only count existing students
+    const studentsCount = await prisma.user.count({
+      where: {
+        id: { in: Array.from(studentIdsSet).filter(id => id !== teacherIdStr) },
+        role: 'STUDENT'
+      }
+    });
+
+    // 3. Calculate unique groups count
+    const uniqueGroupIds = new Set<string>();
+    teacherCourses.forEach(c => c.groups.forEach(g => uniqueGroupIds.add(g.id)));
+    scheduledSchedules.forEach(s => {
+      if (s.assignedToGroup) uniqueGroupIds.add(s.assignedToGroup.id);
+    });
+    const groupsCount = uniqueGroupIds.size;
 
     const [assignmentsCount, pendingSubmissionsCount, recentSubmissions, recentAnnouncements, recentLibraryResources] = await Promise.all([
       prisma.assignment.count({ where: { teacherId: teacherIdStr } }),
@@ -221,7 +249,7 @@ export const getTeacherStats = async (req: Request, res: Response) => {
       totalStudents: studentsCount,
       totalCourses: coursesCount,
       averageGrade,
-      groups: teacherGroups.length,
+      groups: groupsCount,
       assignments: assignmentsCount,
       pendingSubmissions: pendingSubmissionsCount,
       recentSubmissions,

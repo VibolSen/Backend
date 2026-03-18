@@ -13,6 +13,34 @@ export const getRooms = async (req: Request, res: Response) => {
   }
 };
 
+export const getRoom = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const room = await (prisma as any).room.findUnique({
+      where: { id: String(id) },
+      include: {
+        schedules: {
+            include: {
+                course: { select: { name: true } },
+                assignedToGroup: { select: { name: true } },
+                assignedToTeacher: { select: { firstName: true, lastName: true } },
+                sessions: {
+                    orderBy: { startTime: 'asc' }
+                }
+            }
+        }
+      }
+    });
+    if (!room) {
+        return res.status(404).json({ error: "Room not found" });
+    }
+    res.json(room);
+  } catch (err) {
+    console.error("Failed to fetch room:", err);
+    res.status(500).json({ error: "Failed to fetch room" });
+  }
+};
+
 export const createRoom = async (req: Request, res: Response) => {
   try {
     const { name, capacity, type, resources } = req.body;

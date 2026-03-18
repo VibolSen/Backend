@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { getGroups, getGroup, createGroup, updateGroup, deleteGroup } from '../controllers/groupController';
+import { getGroups, getGroup, createGroup, updateGroup, deleteGroup, getGroupStudents } from '../controllers/groupController';
+import { authenticateToken, authorizeRoles } from '../middleware/auth';
 
 const router = Router();
 
@@ -63,10 +64,11 @@ const router = Router();
  *       200:
  *         description: Group deleted
  */
-router.get('/', getGroups);
-router.get('/:id', getGroup);
-router.post('/', createGroup);
-router.put('/:id', updateGroup);
-router.delete('/:id', deleteGroup);
+router.get('/', authenticateToken, authorizeRoles('ADMIN', 'STUDY_OFFICE', 'TEACHER'), getGroups);
+router.get('/:id/students', authenticateToken, authorizeRoles('ADMIN', 'STUDY_OFFICE', 'TEACHER'), getGroupStudents);
+router.get('/:id', authenticateToken, authorizeRoles('ADMIN', 'STUDY_OFFICE', 'TEACHER'), getGroup);
+router.post('/', authenticateToken, authorizeRoles('ADMIN', 'STUDY_OFFICE'), createGroup);
+router.put('/:id', authenticateToken, authorizeRoles('ADMIN', 'STUDY_OFFICE'), updateGroup);
+router.delete('/:id', authenticateToken, authorizeRoles('ADMIN', 'STUDY_OFFICE'), deleteGroup);
 
 export default router;

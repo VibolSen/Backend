@@ -3,6 +3,41 @@ import prisma from '../prisma';
 import bcrypt from 'bcrypt';
 import { generateStudentId } from '../utils/idGenerator';
 
+export const getMyGroup = async (req: Request, res: Response) => {
+  try {
+    const { studentId } = req.query;
+
+    if (!studentId) {
+      return res.status(400).json({ error: 'Student ID is required' });
+    }
+
+    const groups = await (prisma.group as any).findMany({
+      where: {
+        students: { some: { id: String(studentId) } }
+      },
+      include: {
+        courses: { select: { id: true, name: true } },
+        students: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            profile: { select: { avatar: true, studentId: true } }
+          }
+        },
+        batch: { include: { department: true } },
+        _count: { select: { students: true } }
+      }
+    });
+
+    res.json(groups);
+  } catch (error) {
+    console.error("Error fetching student group:", error);
+    res.status(500).json({ error: "Failed to fetch group" });
+  }
+};
+
 export const getStudentCourses = async (req: Request, res: Response) => {
   try {
     const { studentId } = req.query;
@@ -231,7 +266,7 @@ export const createStudent = async (req: Request, res: Response) => {
   try {
     const {
       email, password, firstName, lastName, role, departmentId,
-      gender, academicStatus, academicYear, generation,
+      gender, academicStatus, academicYear, generation, batchId,
       emergencyContactName, emergencyContactPhone, emergencyContactRelation,
       specialization, maxWorkload,
       currentCourses
@@ -241,7 +276,7 @@ export const createStudent = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Missing required identity fields" });
     }
 
-    const hashedPassword = await bcrypt.hash(password || '123456', 10);
+    const hashedPassword = await bcrypt.hash(password || 'password123', 10);
     const studentId = await generateStudentId();
 
     const newStudent = await prisma.user.create({
@@ -259,6 +294,7 @@ export const createStudent = async (req: Request, res: Response) => {
             studentId,
             academicYear: academicYear ? parseInt(String(academicYear)) : 1,
             generation: generation || "",
+            batchId: batchId || undefined,
             emergencyContactName,
             emergencyContactPhone,
             emergencyContactRelation,
@@ -294,7 +330,7 @@ export const updateStudent = async (req: Request, res: Response) => {
     const { id } = req.params;
     const {
       email, firstName, lastName, role, departmentId,
-      gender, academicStatus, academicYear, generation,
+      gender, academicStatus, academicYear, generation, batchId,
       emergencyContactName, emergencyContactPhone, emergencyContactRelation,
       specialization, maxWorkload,
       currentCourses
@@ -319,6 +355,7 @@ export const updateStudent = async (req: Request, res: Response) => {
               academicStatus: academicStatus || 'ACTIVE',
               academicYear: academicYear ? parseInt(String(academicYear)) : 1,
               generation: generation || "",
+              batchId: batchId || undefined,
               emergencyContactName,
               emergencyContactPhone,
               emergencyContactRelation,
@@ -330,6 +367,7 @@ export const updateStudent = async (req: Request, res: Response) => {
               academicStatus,
               academicYear: academicYear ? parseInt(String(academicYear)) : undefined,
               generation,
+              batchId: batchId || undefined,
               emergencyContactName,
               emergencyContactPhone,
               emergencyContactRelation,

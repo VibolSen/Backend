@@ -98,7 +98,11 @@ app.use(express.urlencoded({ extended: true }));
 
 // Custom Request Logger Middleware
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  console.log("");
+  console.log("==========================================================");
+  console.log(`🌐 [${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
+  if (Object.keys(req.query).length > 0) console.log(`🔍 Query:`, req.query);
+  console.log("==========================================================");
   next();
 });
 

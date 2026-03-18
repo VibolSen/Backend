@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import prisma from '../prisma';
 import { KHQR, TAG, CURRENCY, COUNTRY } from 'ts-khqr';
+import { createInternalNotification } from './notificationController';
 
 // Invoices
 export const getInvoices = async (req: AuthRequest, res: Response) => {
@@ -22,6 +23,9 @@ export const getInvoices = async (req: AuthRequest, res: Response) => {
                 include: { fee: true }
             },
             payments: true
+        },
+        orderBy: {
+            createdAt: 'desc'
         }
     });
     res.json(invoices);
@@ -575,22 +579,33 @@ export const checkBakongStatus = async (req: AuthRequest, res: Response) => {
         const exchangeRate = Number(process.env.EXCHANGE_RATE_USD_KHR || 4100);
 
         // 2. If we have an MD5, check the REAL Bakong API
-        if (md5 && process.env.BAKONG_API_TOKEN) {
+        if (md5) {
             try {
                 let data: any;
+                const bakongBaseUrl = (process.env.BAKONG_API_URL || 'https://api-bakong.nbc.gov.kh').replace(/\/+$/, '');
+                // Ensure /v1 is included if not present in the base URL
+                const apiUrl = bakongBaseUrl.endsWith('/v1') ? bakongBaseUrl : `${bakongBaseUrl}/v1`;
+                const checkUrl = `${apiUrl}/check_transaction_by_md5`;
+                
+                const headers: any = {
+                    'Content-Type': 'application/json'
+                };
+                if (process.env.BAKONG_API_TOKEN) {
+                    headers['Authorization'] = `Bearer ${process.env.BAKONG_API_TOKEN}`;
+                }
+
                 if (typeof fetch === 'undefined') {
                     // Fallback using native https module for Node.js < 18
                     data = await new Promise((resolve, reject) => {
                         const https = require('https');
-                        const url = new URL(`${process.env.BAKONG_API_URL || 'https://api-bakong.nbc.gov.kh/v1'}/check_transaction_by_md5`);
+                        const url = new URL(checkUrl);
                         const body = JSON.stringify({ md5 });
                         const req = https.request({
                             hostname: url.hostname,
                             path: url.pathname,
                             method: 'POST',
                             headers: {
-                                'Authorization': `Bearer ${process.env.BAKONG_API_TOKEN}`,
-                                'Content-Type': 'application/json',
+                                ...headers,
                                 'Content-Length': Buffer.byteLength(body)
                             }
                         }, (res: any) => {
@@ -606,21 +621,25 @@ export const checkBakongStatus = async (req: AuthRequest, res: Response) => {
                         req.end();
                     });
                 } else {
-                    const bakongResponse = await fetch(`${process.env.BAKONG_API_URL || 'https://api-bakong.nbc.gov.kh/v1'}/check_transaction_by_md5`, {
+                    const bakongResponse = await fetch(checkUrl, {
                         method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${process.env.BAKONG_API_TOKEN}`,
-                            'Content-Type': 'application/json'
-                        },
+                        headers,
                         body: JSON.stringify({ md5 })
                     });
                     data = await bakongResponse.json();
                 }
 
-                console.log(`[Bakong API] Response for MD5 ${md5}:`, JSON.stringify(data));
+                if (data.errorCode === 15) {
+                    // Silently ignore ErrorCode 15 as it just means "Waiting for payment"
+                    // Printing it every 3 seconds clutters the terminal.
+                } else {
+                    console.log(`[Bakong API] Response for MD5 ${md5}:`, JSON.stringify(data));
+                }
                 
-                const statusStr = data.data?.status?.toUpperCase();
-                if (data.responseCode === 0 && data.data && (statusStr === "SUCCESS" || statusStr === "PAID")) {
+                // Bakong sometimes omits 'status' inside data. The API specifically uses responseCode === 0
+                const isSuccess = data.responseCode === 0 || data.data?.status?.toUpperCase() === "SUCCESS" || data.data?.status?.toUpperCase() === "PAID";
+                
+                if (isSuccess && data.data) {
                     const txData = data.data;
 
                     // --- SECURITY: Prevent Duplicate MD5 Processing ---
@@ -630,7 +649,7 @@ export const checkBakongStatus = async (req: AuthRequest, res: Response) => {
 
                     if (existingPayment) {
                         console.log(` ⚠️ Ignore double processing: Payment MD5 ${md5} already confirmed.`);
-                        return res.json({ status: invoice.status, isPaid: false });
+                        return res.json({ status: invoice.status, isPaid: false, paymentConfirmed: true });
                     }
 
                     console.log(` ✅ Bank Verified via MD5: ${md5}. Amount: ${txData.amount} ${txData.currency}. Hash: ${txData.hash || 'N/A'}`);
@@ -642,7 +661,8 @@ export const checkBakongStatus = async (req: AuthRequest, res: Response) => {
                             amount: Number(txData.amount),
                             currency: txData.currency || "USD",
                             md5: String(md5),
-                            paymentDate: new Date(),
+                            transactionId: String(md5),
+                            paymentDate: txData.acknowledgedDateMs ? new Date(txData.acknowledgedDateMs) : new Date(),
                             paymentMethod: "BANK_TRANSFER",
                             senderAccount: txData.fromAccountId || txData.senderAccount || "N/A",
                             senderName: txData.senderName || "BAKONG_USER",
@@ -650,6 +670,15 @@ export const checkBakongStatus = async (req: AuthRequest, res: Response) => {
                             notes: `Verified via Bakong Open API`
                         }
                     });
+                    
+                    // 🔔 Notify Student of successful payment
+                    await createInternalNotification(
+                        invoice.studentId,
+                        "Payment Received",
+                        `We've successfully received your payment of ${txData.amount} ${txData.currency} for Invoice #${invoice.id.substring(0,8).toUpperCase()}.`,
+                        "PAYMENT",
+                        `/student/invoices/${invoice.id}`
+                    );
 
                     // SECURITY: Validate Total Paid vs Invoice Amount
                     const updatedInvoice = await prisma.invoice.findUnique({
@@ -672,10 +701,10 @@ export const checkBakongStatus = async (req: AuthRequest, res: Response) => {
                             where: { id: invoice.id },
                             data: { status: "PAID" }
                         });
-                        return res.json({ status: "PAID", isPaid: true });
+                        return res.json({ status: "PAID", isPaid: true, paymentConfirmed: true });
                     } else {
                         console.log(` INFO: Partial payment for ${invoice.id}, Total Paid (Normalized): ${totalPaid}. Required: ${updatedInvoice!.totalAmount}`);
-                        return res.json({ status: invoice.status, isPaid: false, totalPaid });
+                        return res.json({ status: invoice.status, isPaid: false, totalPaid, paymentConfirmed: true });
                     }
                 }
             } catch (apiErr) {

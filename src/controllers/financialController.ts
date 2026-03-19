@@ -1146,6 +1146,7 @@ export const getStudentPaymentReport = async (req: AuthRequest, res: Response) =
                     const totalPaid = inv.payments.reduce((sum: number, p: any) => sum + p.amount, 0);
                     reportData.push({
                         invoiceId: inv.id,
+                        userId: student.id,
                         studentId: student.profile?.studentId || "N/A",
                         studentName: `${student.firstName} ${student.lastName}`,
                         email: student.email,
@@ -1169,6 +1170,7 @@ export const getStudentPaymentReport = async (req: AuthRequest, res: Response) =
                 // But generally, unbilled students should always show up if they match the academic year.
                 reportData.push({
                     invoiceId: `unbilled-${student.id}`, // Mock ID for React key
+                    userId: student.id,
                     studentId: student.profile?.studentId || "N/A",
                     studentName: `${student.firstName} ${student.lastName}`,
                     email: student.email,
@@ -1275,23 +1277,31 @@ export const bulkDeleteInvoices = async (req: AuthRequest, res: Response) => {
             return res.status(400).json({ error: "Invoice IDs array is required" });
         }
 
+        // Safety: filter out any malformed/fake IDs (e.g. "unbilled-xxx" mock IDs from the report)
+        const validObjectIdRegex = /^[a-f\d]{24}$/i;
+        const validIds = ids.filter((id: string) => validObjectIdRegex.test(id));
+
+        if (validIds.length === 0) {
+            return res.status(400).json({ error: "No valid invoice IDs provided. UNBILLED entries cannot be deleted." });
+        }
+
         // Before deleting the invoices, delete any associated invoice items
         await prisma.invoiceItem.deleteMany({
             where: {
-                invoiceId: { in: ids }
+                invoiceId: { in: validIds }
             }
         });
 
         // Also delete any associated payments
         await prisma.payment.deleteMany({
             where: {
-                invoiceId: { in: ids }
+                invoiceId: { in: validIds }
             }
         });
 
         const deleted = await prisma.invoice.deleteMany({
             where: {
-                id: { in: ids }
+                id: { in: validIds }
             }
         });
 

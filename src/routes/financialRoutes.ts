@@ -1,14 +1,14 @@
 import { Router } from 'express';
 import { 
-    getInvoices, getInvoiceById, createInvoice, updateInvoice, getInvoiceLogs, deleteInvoice, 
+    getInvoices, getInvoiceById, createInvoice, updateInvoice, getInvoiceLogs, deleteInvoice, bulkDeleteInvoices,
     getFees, createFee, updateFee, deleteFee, 
-    getPayments, createPayment, updatePayment, deletePayment, 
-    getExpenses, createExpense, updateExpense, deleteExpense, 
+    getPayments, createPayment, updatePayment, deletePayment, bulkDeletePayments,
+    getExpenses, createExpense, updateExpense, deleteExpense, bulkDeleteExpenses,
     generatePaymentQR, checkBakongStatus, bakongCallback,
     getPayrolls, generatePayrolls, updatePayrollStatus,
     getUserBenefits, updateUserBenefit,
     getBudgets, getBudgetById, createBudget, addBudgetItem, sendReminders,
-    getStudentPaymentReport
+    getStudentPaymentReport, bulkDeleteFees
 } from '../controllers/financialController';
 import { authenticateToken, authorizeRoles } from '../middleware/auth';
 
@@ -35,21 +35,25 @@ router.post('/invoices', authorizeRoles('ADMIN', 'FINANCE'), createInvoice);
 router.put('/invoices/:id', authorizeRoles('ADMIN', 'FINANCE'), updateInvoice);
 router.get('/invoices/:id/logs', authorizeRoles('ADMIN', 'FINANCE'), getInvoiceLogs);
 router.delete('/invoices/:id', authorizeRoles('ADMIN', 'FINANCE'), deleteInvoice);
+router.post('/invoices/bulk-delete', authorizeRoles('ADMIN', 'FINANCE'), bulkDeleteInvoices); 
 
 router.get('/fees', authorizeRoles('ADMIN', 'FINANCE', 'STUDENT'), getFees);
 router.post('/fees', authorizeRoles('ADMIN', 'FINANCE'), createFee);
 router.put('/fees/:id', authorizeRoles('ADMIN', 'FINANCE'), updateFee);
 router.delete('/fees/:id', authorizeRoles('ADMIN', 'FINANCE'), deleteFee);
+router.post('/fees/bulk-delete', authorizeRoles('ADMIN', 'FINANCE'), bulkDeleteFees);
 
 router.get('/payments', authorizeRoles('ADMIN', 'FINANCE'), getPayments);
 router.post('/payments', authorizeRoles('ADMIN', 'FINANCE'), createPayment);
 router.put('/payments/:id', authorizeRoles('ADMIN', 'FINANCE'), updatePayment);
 router.delete('/payments/:id', authorizeRoles('ADMIN', 'FINANCE'), deletePayment);
+router.post('/payments/bulk-delete', authorizeRoles('ADMIN', 'FINANCE'), bulkDeletePayments);
 
 router.get('/expenses', authorizeRoles('ADMIN', 'FINANCE'), getExpenses);
 router.post('/expenses', authorizeRoles('ADMIN', 'FINANCE'), createExpense);
 router.put('/expenses/:id', authorizeRoles('ADMIN', 'FINANCE'), updateExpense);
 router.delete('/expenses/:id', authorizeRoles('ADMIN', 'FINANCE'), deleteExpense);
+router.post('/expenses/bulk-delete', authorizeRoles('ADMIN', 'FINANCE'), bulkDeleteExpenses);
 
 // --- Reports ---
 router.get('/reports/student-payments', authorizeRoles('ADMIN', 'FINANCE'), getStudentPaymentReport);

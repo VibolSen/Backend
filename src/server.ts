@@ -79,15 +79,7 @@ const allowedOrigins = [
 ].filter(Boolean) as string[];
 
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl) 
-    // but in production, you should probably be more restrictive
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true, // Allow all origins in development to prevent Network Errors
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -210,7 +202,7 @@ app.use((err: any, req: any, res: any, next: any) => {
   res.status(500).json({ error: "Internal Server Error", message: err.message });
 });
 
-app.listen(Number(PORT), '0.0.0.0', () => {
+app.listen(Number(PORT), () => {
   console.log(`Server is running on http://localhost:${PORT}`);
   console.log(`Swagger Docs available at http://localhost:${PORT}/api-docs`);
 

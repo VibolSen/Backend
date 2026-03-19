@@ -1049,11 +1049,19 @@ export const getBudgetById = async (req: AuthRequest, res: Response) => {
 };
 export const sendReminders = async (req: AuthRequest, res: Response) => {
     try {
-        // 1. Get all invoices that are "SENT" or "OVERDUE"
+        const { invoiceIds } = req.body; // Optional array of specific invoices
+        
+        const whereClause: any = {
+            status: { in: ["SENT", "OVERDUE"] }
+        };
+
+        if (invoiceIds && Array.isArray(invoiceIds)) {
+            whereClause.id = { in: invoiceIds };
+        }
+
+        // 1. Get invoices that match the criteria
         const pendingInvoices = await prisma.invoice.findMany({
-            where: {
-                status: { in: ["SENT", "OVERDUE"] }
-            },
+            where: whereClause,
             include: {
                 student: true
             }
@@ -1187,6 +1195,152 @@ export const getStudentPaymentReport = async (req: AuthRequest, res: Response) =
         res.json(reportData);
     } catch (err: any) {
         console.error("Failed to generate student payment report:", err);
-        res.status(500).json({ error: "Failed to generate report", details: err.message });
+        res.status(500).json({ error: "Failed to verify Bakong payment", details: err.message });
+    }
+};
+
+export const bulkDeletePayments = async (req: AuthRequest, res: Response) => {
+    try {
+        const { ids } = req.body;
+        if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+        const actorId = req.user.userId;
+
+        if (!ids || !Array.isArray(ids)) {
+            return res.status(400).json({ error: "Payment IDs array is required" });
+        }
+
+        const deleted = await prisma.payment.deleteMany({
+            where: {
+                id: { in: ids }
+            }
+        });
+
+        // Audit Trail
+        await prisma.auditLog.create({
+            data: {
+                action: "PAYMENT_BULK_DELETED",
+                actorId: actorId,
+                target: "PAYMENT",
+                details: `Purged ${deleted.count} payments from the treasury registry.`
+            }
+        });
+
+        res.json({ success: true, count: deleted.count });
+    } catch (err: any) {
+        console.error("Failed to bulk delete payments:", err);
+        res.status(500).json({ error: "Failed to bulk delete payments", details: err.message });
+    }
+};
+
+export const bulkDeleteExpenses = async (req: AuthRequest, res: Response) => {
+    try {
+        const { ids } = req.body;
+        if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+        const actorId = req.user.userId;
+
+        if (!ids || !Array.isArray(ids)) {
+            return res.status(400).json({ error: "Expense IDs array is required" });
+        }
+
+        const deleted = await prisma.expense.deleteMany({
+            where: {
+                id: { in: ids }
+            }
+        });
+
+        // Audit Trail
+        await prisma.auditLog.create({
+            data: {
+                action: "EXPENSE_BULK_DELETED",
+                actorId: actorId,
+                target: "EXPENSE",
+                details: `Voided ${deleted.count} expense records from the treasury registry.`
+            }
+        });
+
+        res.json({ success: true, count: deleted.count });
+    } catch (err: any) {
+        console.error("Failed to bulk delete expenses:", err);
+        res.status(500).json({ error: "Failed to bulk delete expenses", details: err.message });
+    }
+};
+
+export const bulkDeleteInvoices = async (req: AuthRequest, res: Response) => {
+    try {
+        const { ids } = req.body;
+        if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+        const actorId = req.user.userId;
+
+        if (!ids || !Array.isArray(ids)) {
+            return res.status(400).json({ error: "Invoice IDs array is required" });
+        }
+
+        // Before deleting the invoices, delete any associated invoice items
+        await prisma.invoiceItem.deleteMany({
+            where: {
+                invoiceId: { in: ids }
+            }
+        });
+
+        // Also delete any associated payments
+        await prisma.payment.deleteMany({
+            where: {
+                invoiceId: { in: ids }
+            }
+        });
+
+        const deleted = await prisma.invoice.deleteMany({
+            where: {
+                id: { in: ids }
+            }
+        });
+
+        // Audit Trail
+        await prisma.auditLog.create({
+            data: {
+                action: "INVOICE_BULK_DELETED",
+                actorId: actorId,
+                target: "INVOICE",
+                details: `Voided ${deleted.count} invoices from the financial registry.`
+            }
+        });
+
+        res.json({ success: true, count: deleted.count });
+    } catch (err: any) {
+        console.error("Failed to bulk delete invoices:", err);
+        res.status(500).json({ error: "Failed to bulk delete invoices", details: err.message });
+    }
+};
+
+export const bulkDeleteFees = async (req: AuthRequest, res: Response) => {
+    try {
+        const { ids } = req.body;
+        if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+        const actorId = req.user.userId;
+
+        if (!ids || !Array.isArray(ids)) {
+            return res.status(400).json({ error: "Fee IDs array is required" });
+        }
+
+        const deleted = await prisma.fee.deleteMany({
+            where: {
+                id: { in: ids }
+            }
+        });
+
+        // Audit Trail
+        await prisma.auditLog.create({
+            data: {
+                action: "FEE_BULK_DELETED",
+                actorId: actorId,
+                target: "FEE",
+                details: `Purged ${deleted.count} fee structures from the financial catalog.`
+            }
+        });
+
+        res.json({ success: true, count: deleted.count });
+    } catch (err: any) {
+        console.error("Failed to bulk delete fees:", err);
+        res.status(500).json({ error: "Failed to bulk delete fees", details: err.message });
     }
 };

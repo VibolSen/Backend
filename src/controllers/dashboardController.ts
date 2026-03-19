@@ -3,21 +3,60 @@ import prisma from '../prisma';
 
 export const getAdminStats = async (req: Request, res: Response) => {
   try {
-    const [students, teachers, staff, departments, faculties, courses, groups, totalRevenue] = await Promise.all([
+    const [students, teachers, staff, departments, faculties, courses, groups, activeSessionCount, pendingLeaves, pendingApplications] = await Promise.all([
       prisma.user.count({ where: { role: 'STUDENT' } }),
       prisma.user.count({ where: { role: 'TEACHER' } }),
-      prisma.user.count({ where: { role: { in: ['HR', 'STUDY_OFFICE'] } } }), // Counting HR and Study Office as staff
+      prisma.user.count({ where: { role: { in: ['HR', 'STUDY_OFFICE', 'FINANCE', 'TEACHER'] } } }), // Counting HR, Study Office, Finance, and Teachers as staff
       prisma.department.count(),
       prisma.faculty.count(),
       prisma.course.count(),
       prisma.group.count(),
-      prisma.payment.aggregate({ _sum: { amount: true } })
+      prisma.userSession.count({ where: { status: 'active' } }),
+      prisma.leaveRequest.count({ where: { status: 'PENDING' } }),
+      prisma.jobApplication.count({ where: { status: 'APPLIED' } }),
     ]);
+
+    // Financial aggregation (avoiding groupBy relation filters on MongoDB)
+    const [payments, expenses] = await Promise.all([
+      prisma.payment.findMany({
+        where: { invoice: { status: { not: 'CANCELLED' } } },
+        select: { amount: true, currency: true }
+      }),
+      prisma.expense.findMany({
+        select: { amount: true }
+      })
+    ]);
+
+    const aggregateRevenue = (items: { amount: number, currency: string }[]) => {
+      const grouped = items.reduce((acc: any, item) => {
+        const curr = item.currency || 'USD';
+        acc[curr] = (acc[curr] || 0) + item.amount;
+        return acc;
+      }, {});
+      return Object.keys(grouped).map(curr => ({ currency: curr, total: grouped[curr] }));
+    };
+
+    const totalRevenue = aggregateRevenue(payments);
+    const totalExpenses = [
+      { currency: 'USD', total: expenses.reduce((sum, e) => sum + e.amount, 0) }
+    ];
 
     const recentInvoices = await prisma.invoice.findMany({
       take: 5,
       orderBy: { createdAt: 'desc' },
       include: { student: { select: { firstName: true, lastName: true } } }
+    });
+
+    const recentActivity = await prisma.auditLog.findMany({
+      take: 8,
+      orderBy: { timestamp: 'desc' },
+      include: { actor: { select: { firstName: true, lastName: true, role: true } } }
+    });
+
+    // Count logins in the last 24 hours
+    const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const loginsLast24h = await prisma.userSession.count({
+      where: { createdAt: { gte: last24h } }
     });
 
     res.json({
@@ -28,8 +67,14 @@ export const getAdminStats = async (req: Request, res: Response) => {
       facultyCount: faculties,
       courseCount: courses,
       groupCount: groups,
-      totalRevenue: totalRevenue._sum.amount || 0,
-      recentInvoices
+      totalRevenue,
+      totalExpenses,
+      pendingLeaves,
+      pendingApplications,
+      activeSessionCount,
+      loginsLast24h,
+      recentInvoices,
+      recentActivity
     });
   } catch (error) {
     console.error("Failed to fetch admin stats:", error);

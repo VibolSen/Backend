@@ -68,7 +68,7 @@ router.get('/me', authenticateToken, getMe);
  *       200:
  *         description: Logout successful
  */
-router.post('/logout', logout);
+router.post('/logout', authenticateToken, logout);
 
 /**
  * @swagger

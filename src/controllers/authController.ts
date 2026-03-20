@@ -38,14 +38,16 @@ export const login = async (req: Request, res: Response) => {
     // Create session
     const userAgent = req.headers['user-agent'] || 'Unknown Device';
     let device = 'Desktop';
-    if (/mobile/i.test(userAgent)) device = 'Mobile';
-    else if (/tablet/i.test(userAgent)) device = 'Tablet';
+    if (/tablet|ipad|playbook|silk/i.test(userAgent)) device = 'Tablet';
+    else if (/mobile|iphone|ipod|android|blackberry|iemobile|opera mini/i.test(userAgent)) device = 'Mobile';
 
     let browser = 'Unknown Browser';
-    if (/chrome|crios/i.test(userAgent)) browser = 'Chrome';
+    if (/edg\//i.test(userAgent)) browser = 'Edge';
+    else if (/opr\/|opera/i.test(userAgent)) browser = 'Opera';
+    else if (/brave/i.test(userAgent)) browser = 'Brave';
+    else if (/chrome|crios/i.test(userAgent)) browser = 'Chrome';
     else if (/firefox|fxios/i.test(userAgent)) browser = 'Firefox';
     else if (/safari/i.test(userAgent)) browser = 'Safari';
-    else if (/edge/i.test(userAgent)) browser = 'Edge';
 
     const session = await prisma.userSession.create({
       data: {
@@ -168,10 +170,14 @@ export const getMe = async (req: AuthRequest, res: Response) => {
   }
 };
 
-export const logout = async (req: Request, res: Response) => {
+export const logout = async (req: AuthRequest, res: Response) => {
   try {
-    // In a stateless JWT system, logout is handled client-side by removing the token
-    // This endpoint can be used for logging or future token blacklisting
+    if (req.user && req.user.sessionId) {
+      await prisma.userSession.update({
+        where: { id: req.user.sessionId },
+        data: { status: 'logged_out' }
+      });
+    }
     res.json({ message: "Logged out successfully" });
   } catch (error) {
     console.error("Logout API error:", error);

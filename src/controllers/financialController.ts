@@ -444,7 +444,7 @@ export const createExpense = async (req: AuthRequest, res: Response) => {
             data: {
                 category,
                 description,
-                amount,
+                amount: Number(amount),
                 date: new Date(date)
             }
         });

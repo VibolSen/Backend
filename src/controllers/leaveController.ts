@@ -62,7 +62,7 @@ export const getAllLeaveRequests = async (req: Request, res: Response) => {
       where: filter,
       include: {
         user: {
-          select: { firstName: true, lastName: true, email: true, department: { select: { name: true } } }
+          select: { firstName: true, lastName: true, email: true, role: true, department: { select: { name: true } } }
         },
         approvedBy: {
           select: { firstName: true, lastName: true }

@@ -22,6 +22,11 @@ export const getCourses = async (req: Request, res: Response) => {
                 firstName: true,
                 lastName: true,
                 email: true,
+                profile: {
+                    select: {
+                        avatar: true
+                    }
+                }
             }
         },
         _count: {
@@ -121,6 +126,11 @@ export const getCourseById = async (req: Request, res: Response) => {
             firstName: true,
             lastName: true,
             email: true,
+            profile: {
+              select: {
+                avatar: true
+              }
+            }
           }
         },
         groups: {
@@ -230,7 +240,17 @@ export const getCourseAnalytics = async (req: Request, res: Response) => {
       where: { id: courseId },
       include: {
         leadBy: {
-          select: { firstName: true, lastName: true, id: true, email: true }
+          select: { 
+            firstName: true, 
+            lastName: true, 
+            id: true, 
+            email: true,
+            profile: {
+              select: {
+                avatar: true
+              }
+            }
+          }
         },
 
         enrollments: {

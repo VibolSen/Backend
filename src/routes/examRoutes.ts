@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getExams, createExam, updateExam, deleteExam } from '../controllers/examController';
+import { getExams, getExam, createExam, updateExam, deleteExam } from '../controllers/examController';
 import { upload } from '../middleware/upload';
 
 const router = Router();
@@ -65,6 +65,7 @@ const router = Router();
  *         description: Exam deleted
  */
 router.get('/', getExams);
+router.get('/:id', getExam);
 router.post('/', upload.array('attachments', 5), createExam);
 router.put('/:id', upload.array('attachments', 5), updateExam);
 router.delete('/:id', deleteExam);

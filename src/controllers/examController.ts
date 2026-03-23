@@ -41,7 +41,13 @@ export const getExam = async (req: Request, res: Response) => {
     const exam = await (prisma.exam as any).findUnique({
       where: { id: String(id) },
       include: {
-        group: { select: { name: true, id: true } },
+        group: { 
+          select: { 
+            name: true, 
+            id: true,
+            students: { select: { id: true, firstName: true, lastName: true, email: true } }
+          } 
+        },
         course: { select: { name: true } },
         teacher: { select: { firstName: true, lastName: true } },
         submissions: {
@@ -56,6 +62,28 @@ export const getExam = async (req: Request, res: Response) => {
     if (!exam) {
       return res.status(404).json({ error: "Exam not found" });
     }
+
+    // Embed mock "PENDING" submissions for students who haven't submitted
+    if (exam.group?.students) {
+       const existingStdIds = new Set(exam.submissions.map((s: any) => s.studentId));
+       const pendingMocks = exam.group.students
+          .filter((st: any) => !existingStdIds.has(st.id))
+          .map((st: any) => ({
+             id: `${exam.id}_${st.id}`,
+             status: 'PENDING',
+             content: null,
+             grade: null,
+             feedback: null,
+             studentId: st.id,
+             student: st,
+             examId: exam.id
+          }));
+       
+       exam.submissions = [...exam.submissions, ...pendingMocks].sort((a, b) => 
+           a.student.firstName.localeCompare(b.student.firstName)
+       );
+    }
+
     res.json(exam);
   } catch (err) {
     console.error("Failed to fetch exam:", err);

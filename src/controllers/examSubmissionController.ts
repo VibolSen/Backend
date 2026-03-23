@@ -22,10 +22,33 @@ export const getExamSubmission = async (req: Request, res: Response) => {
       },
     });
 
-    if (!submission) {
-      return res.status(404).json({ error: "Exam submission not found" });
+    if (submission) {
+        return res.json(submission);
     }
-    res.json(submission);
+
+    // 2. If no submission, check if the ID is an Exam ID (Virtual Submission)
+    const exam = await prisma.exam.findUnique({
+        where: { id: String(id) },
+        include: {
+            group: { select: { name: true } },
+            teacher: { select: { firstName: true, lastName: true, email: true } }
+        }
+    });
+
+    if (exam) {
+        // Return a mocked "PENDING" exam submission
+        return res.json({
+            id: exam.id,
+            status: 'PENDING',
+            exam: exam,
+            grade: null,
+            feedback: null,
+            submittedAt: null,
+            student: null 
+        });
+    }
+
+    res.status(404).json({ error: "Exam submission or Exam not found" });
   } catch (err) {
     console.error("Failed to fetch exam submission:", err);
     res.status(500).json({ error: "Failed to fetch exam submission" });
@@ -57,7 +80,45 @@ export const updateExamSubmission = async (req: Request, res: Response) => {
     
     finalUrls = [...finalUrls, ...uploadedUrls];
 
-    // Fetch original to cleanup removed files
+    // Upsert logic for Mock Pending Submissions (`examId_studentId`)
+    const idStr = String(id);
+    if (idStr.includes('_')) {
+        const [examId, studentId] = idStr.split('_');
+        
+        const upserted = await prisma.examSubmission.upsert({
+            where: {
+                examId_studentId: { examId, studentId }
+            },
+            create: {
+                examId,
+                studentId,
+                grade: grade !== undefined ? parseInt(grade) : undefined,
+                feedback,
+                status: status as ExamSubmissionStatus || 'GRADED',
+                content,
+                fileUrls: finalUrls,
+                submittedAt: status === 'SUBMITTED' ? new Date() : undefined
+            },
+            update: {
+                grade: grade !== undefined ? parseInt(grade) : undefined,
+                feedback,
+                status: status as ExamSubmissionStatus || 'GRADED',
+                content,
+                fileUrls: finalUrls,
+                submittedAt: status === 'SUBMITTED' ? new Date() : undefined
+            }
+        });
+        
+        if (status === 'GRADED') {
+            const exam = await prisma.exam.findUnique({ where: { id: examId }, select: { title: true } });
+            await createInternalNotification(
+                studentId, "Exam Graded", `Your exam submission for "${exam?.title}" has been graded.`, "GRADE", `/student/exams/${upserted.id}`
+            );
+        }
+        return res.json(upserted);
+    }
+
+    // Standard Update Logic for existing Submissions
     const original = await prisma.examSubmission.findUnique({
         where: { id: String(id) },
         select: { fileUrls: true }

@@ -601,6 +601,26 @@ export const getStudyOfficeStats = async (req: Request, res: Response) => {
       })
     ]);
 
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const [attendanceToday, totalAttendanceRecords, positiveAttendanceRecords] = await Promise.all([
+      prisma.attendance.count({ where: { date: { gte: startOfToday } } }),
+      prisma.attendance.count({ where: { date: { gte: thirtyDaysAgo } } }),
+      prisma.attendance.count({
+        where: {
+          date: { gte: thirtyDaysAgo },
+          status: { in: ['PRESENT', 'LATE'] }
+        }
+      })
+    ]);
+
+    const attendanceRate = totalAttendanceRecords > 0 
+      ? Math.round((positiveAttendanceRecords / totalAttendanceRecords) * 100) 
+      : 100;
+
     res.json({
       studentCount: students,
       teacherCount: teachers,
@@ -610,6 +630,8 @@ export const getStudyOfficeStats = async (req: Request, res: Response) => {
       facultyCount: faculties,
       enrollmentsCount,
       pendingEnrollments,
+      attendanceToday,
+      attendanceRate,
       recentAnnouncements,
       recentCourses
     });

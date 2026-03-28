@@ -1,8 +1,10 @@
 import { Router } from 'express';
-import { updateProgress, getEnrollments, createEnrollment } from '../controllers/enrollmentController';
+import { updateProgress, getEnrollments, createEnrollment, setFinalGrade, getAutoCalculatedScore } from '../controllers/enrollmentController';
+import { authenticateToken, authorizeRoles } from '../middleware/auth';
 
 const router = Router();
 
+// ... (swagger tags omitted for brevity if needed, but I'll keep them)
 /**
  * @swagger
  * tags:
@@ -17,7 +19,11 @@ const router = Router();
  *     summary: Update student course progress
  *     tags: [Enrollments]
  */
-router.post('/progress', updateProgress);
+router.post('/progress', authenticateToken, updateProgress);
+
+router.post('/set-grade', authenticateToken, authorizeRoles('ADMIN', 'STUDY_OFFICE'), setFinalGrade);
+router.get('/auto-score/:courseId/:studentId', authenticateToken, authorizeRoles('ADMIN', 'STUDY_OFFICE', 'TEACHER'), getAutoCalculatedScore);
+
 
 /**
  * @swagger
@@ -29,7 +35,7 @@ router.post('/progress', updateProgress);
  *     summary: Create new enrollment
  *     tags: [Enrollments]
  */
-router.get('/', getEnrollments);
-router.post('/', createEnrollment);
+router.get('/', authenticateToken, getEnrollments);
+router.post('/', authenticateToken, createEnrollment);
 
 export default router;

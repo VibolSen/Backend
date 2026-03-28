@@ -34,6 +34,27 @@ export const getDepartmentById = async (req: Request, res: Response) => {
         _count: {
           select: {
             users: true,
+            departmentCourses: true,
+          }
+        },
+        departmentCourses: {
+          include: {
+            course: {
+              include: {
+                leadBy: {
+                  select: {
+                    firstName: true,
+                    lastName: true,
+                  }
+                },
+                _count: {
+                  select: {
+                    enrollments: true,
+                    groups: true
+                  }
+                }
+              }
+            }
           }
         }
       }

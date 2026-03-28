@@ -90,7 +90,7 @@ model Attendance {
   status    AttendanceStatus
   student   User      @relation(fields: [studentId], references: [id], onDelete: Cascade)
   studentId String    @db.ObjectId
-  group     Group     @relation(fields: [groupId], references: [id])
+  group     Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
   groupId   String    @db.ObjectId
 
   @@unique([date, studentId, groupId], name: "attendance_unique")
@@ -259,6 +259,8 @@ model Department {
   facultyId String?  @db.ObjectId
   budgets   Budget[]
   batches   Batch[]
+
+  departmentCourses DepartmentCourse[]
 }
 
 model Batch {
@@ -287,6 +289,7 @@ model Course {
   groupIds     String[]     @db.ObjectId
   leadBy       User?        @relation("CourseLead", fields: [leadById], references: [id])
   leadById     String?      @db.ObjectId
+  credits      Int?         @default(3)
   createdAt    DateTime?    @default(now())
   updatedAt    DateTime?    @updatedAt
 
@@ -297,15 +300,28 @@ model Course {
   assignments Assignment[]
   exams       Exam[]
   schedules   Schedule[]
+
+  courseDepartments DepartmentCourse[]
+}
+
+model DepartmentCourse {
+  id           String     @id @default(auto()) @map("_id") @db.ObjectId
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  departmentId String     @db.ObjectId
+  course       Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId     String     @db.ObjectId
+
+  @@unique([departmentId, courseId])
 }
 
 model Certificate {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
   recipient   String
-  course      Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  courseId    String    @db.ObjectId
+  course      Course?   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  courseId    String?   @db.ObjectId
   issueDate   DateTime
   expiryDate  DateTime?
+  title       String? // e.g. "Bachelor's Degree in IT" or "Foundation Year"
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -400,7 +416,7 @@ model Assignment {
   teacher     User         @relation("AssignmentsCreated", fields: [teacherId], references: [id], onDelete: Cascade)
   teacherId   String       @db.ObjectId
   
-  group       Group        @relation(fields: [groupId], references: [id])
+  group       Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
   groupId     String       @db.ObjectId
 
   course      Course?      @relation(fields: [courseId], references: [id])
@@ -466,7 +482,7 @@ model Exam {
   teacher     User             @relation("ExamsCreated", fields: [teacherId], references: [id], onDelete: Cascade)
   teacherId   String           @db.ObjectId
   
-  group       Group            @relation(fields: [groupId], references: [id])
+  group       Group            @relation(fields: [groupId], references: [id], onDelete: Cascade)
   groupId     String           @db.ObjectId
 
   course      Course?          @relation(fields: [courseId], references: [id])
@@ -510,6 +526,10 @@ model Enrollment {
   semester  String?
   progress  Int              @default(0) // 0–100 percentage
   
+  // Final Academic Results
+  finalGrade  Float?
+  isCompleted Boolean @default(false)
+
   createdAt DateTime? @default(now())
   updatedAt DateTime? @updatedAt
 

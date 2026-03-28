@@ -101,3 +101,74 @@ export const deleteFaculty = async (req: Request, res: Response) => {
     res.status(500).json({ error: "Failed to delete faculty" });
   }
 };
+
+export const getReportsData = async (req: Request, res: Response) => {
+  try {
+    const { departmentId } = req.query;
+    
+    const studentQuery: any = { role: 'STUDENT' };
+    if (departmentId && typeof departmentId === 'string' && departmentId.trim() !== '') {
+        studentQuery.departmentId = departmentId;
+    }
+
+    const students = await prisma.user.findMany({
+      where: studentQuery,
+      select: {
+          firstName: true,
+          lastName: true,
+          enrollments: { select: { progress: true } },
+          attendances: { select: { status: true } }
+      },
+      take: 20
+    });
+
+    const studentPerformance = students.map(s => {
+        const totalProgress = s.enrollments.reduce((sum, en) => sum + (en.progress || 0), 0);
+        const avgGrade = s.enrollments.length > 0 ? totalProgress / s.enrollments.length : 0;
+        return {
+            name: `${s.firstName} ${s.lastName}`.trim().substring(0, 10),
+            grade: avgGrade
+        };
+    }).filter(sp => sp.grade > 0);
+
+    const classParticipation = students.map(s => {
+        const totalAttendance = s.attendances.length;
+        const presentCount = s.attendances.filter(a => a.status === 'PRESENT').length;
+        const participationRate = totalAttendance > 0 ? (presentCount / totalAttendance) * 100 : 0;
+        return {
+            name: `${s.firstName} ${s.lastName}`.trim().substring(0, 10),
+            participation: Math.round(participationRate)
+        };
+    });
+
+    const rawAttendances = await prisma.attendance.findMany({
+        where: { student: studentQuery },
+        orderBy: { date: 'asc' },
+        take: 300
+    });
+
+    const trendsMap: Record<string, { present: number, absent: number }> = {};
+    rawAttendances.forEach(a => {
+        if (!a.date) return;
+        const dateStr = new Date(a.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        if (!trendsMap[dateStr]) trendsMap[dateStr] = { present: 0, absent: 0 };
+        if (a.status === 'PRESENT') trendsMap[dateStr].present++;
+        if (a.status === 'ABSENT') trendsMap[dateStr].absent++;
+    });
+
+    const attendanceTrends = Object.keys(trendsMap).map(date => ({
+        date,
+        present: trendsMap[date].present,
+        absent: trendsMap[date].absent
+    })).slice(-10);
+
+    res.json({
+        studentPerformance,
+        classParticipation,
+        attendanceTrends
+    });
+  } catch (error) {
+    console.error("Failed to fetch reports:", error);
+    res.status(500).json({ error: "Failed to fetch reports" });
+  }
+};

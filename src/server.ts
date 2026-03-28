@@ -41,6 +41,7 @@ import careersRoutes from './routes/careersRoutes';
 import notificationRoutes from './routes/notificationRoutes';
 import leaveRoutes from './routes/leaveRoutes';
 import batchRoutes from './routes/batchRoutes';
+import certificationRoutes from './routes/certificationRoutes';
 import prisma from './prisma';
 import { startCronJobs } from './services/cronService';
 
@@ -178,6 +179,11 @@ app.use('/api/careers', careersRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/leaves', leaveRoutes);
 app.use('/api/batches', batchRoutes);
+app.use('/api/certifications', certificationRoutes);
+app.get('/api/student/points', authenticateToken, (req: any, res: any) => {
+  // Placeholder: Return empty merit records instead of 404
+  res.json([]);
+});
 app.get('/api/course-analytics', getCourseAnalytics);
 
 app.get('/', (req, res) => {

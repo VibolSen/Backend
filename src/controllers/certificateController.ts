@@ -52,12 +52,13 @@ export const getCertificateById = async (req: Request, res: Response) => {
 };
 
 export const createCertificate = async (req: Request, res: Response) => {
-  const { recipient, courseId, issueDate, expiryDate, studentId } = req.body;
+  const { recipient, courseId, issueDate, expiryDate, studentId, title } = req.body;
   try {
     const certificate = await prisma.certificate.create({
       data: {
         recipient,
-        courseId,
+        courseId: courseId || null,
+        title: title || null,
         issueDate: new Date(issueDate),
         expiryDate: expiryDate ? new Date(expiryDate) : null,
         studentId: studentId || null,
@@ -75,13 +76,14 @@ export const createCertificate = async (req: Request, res: Response) => {
 
 export const updateCertificate = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { recipient, courseId, issueDate, expiryDate, studentId } = req.body;
+  const { recipient, courseId, issueDate, expiryDate, studentId, title } = req.body;
   try {
     const certificate = await prisma.certificate.update({
       where: { id: String(id) },
       data: {
         recipient,
-        courseId,
+        courseId: courseId || null,
+        title: title || null,
         issueDate: new Date(issueDate),
         expiryDate: expiryDate ? new Date(expiryDate) : null,
         studentId: studentId || null,

@@ -112,6 +112,15 @@ export const createGroup = async (req: AuthRequest, res: Response) => {
         courses: verifiedCourseIds ? { connect: verifiedCourseIds.map((id: string) => ({ id })) } : undefined,
         students: verifiedStudentIds ? { connect: verifiedStudentIds.map((id: string) => ({ id })) } : undefined
       } as any,
+      include: {
+        courses: true,
+        batch: {
+          include: { department: { select: { id: true, name: true } } }
+        },
+        students: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        }
+      } as any,
     });
 
     res.status(201).json(newGroup);
@@ -166,6 +175,15 @@ export const updateGroup = async (req: AuthRequest, res: Response) => {
         batchId: batchId || null,
         courses: verifiedCourseIds ? { set: verifiedCourseIds.map((id: string) => ({ id })) } : undefined,
         students: verifiedStudentIds ? { set: verifiedStudentIds.map((id: string) => ({ id })) } : undefined
+      } as any,
+      include: {
+        courses: true,
+        batch: {
+          include: { department: { select: { id: true, name: true } } }
+        },
+        students: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        }
       } as any,
     });
 

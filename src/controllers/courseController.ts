@@ -135,6 +135,15 @@ export const getCourseById = async (req: Request, res: Response) => {
         },
         groups: {
           include: {
+            students: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                role: true
+              }
+            },
             batch: {
               include: {
                 department: {
@@ -175,7 +184,7 @@ export const getCourseById = async (req: Request, res: Response) => {
 
 export const createCourse = async (req: Request, res: Response) => {
   try {
-    const { name, leadById } = req.body;
+    const { name, leadById, credits } = req.body;
 
     if (!name) {
       res.status(400).json({ error: 'Name is required' });
@@ -187,6 +196,7 @@ export const createCourse = async (req: Request, res: Response) => {
       data: {
         name,
         leadById,
+        credits: credits ? parseInt(credits) : 3,
       },
     });
 
@@ -200,13 +210,14 @@ export const createCourse = async (req: Request, res: Response) => {
 export const updateCourse = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, leadById } = req.body;
+    const { name, leadById, credits } = req.body;
 
     const updatedCourse = await prisma.course.update({
       where: { id: String(id) },
       data: {
         name,
-        leadById
+        leadById,
+        credits: credits ? parseInt(credits) : undefined
       },
     });
 

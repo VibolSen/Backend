@@ -16,6 +16,7 @@ const router = Router();
 
 // --- User Management ---
 router.get('/', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE', 'FINANCE'), getUsers);
+router.get('/audit-logs', authenticateToken, authorizeRoles('ADMIN'), getAuditLogs);
 router.get('/:id', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE', 'FINANCE', 'TEACHER'), getUser);
 router.post('/', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), createUser);
 router.put('/:id', authenticateToken, authorizeRoles('ADMIN', 'HR', 'STUDY_OFFICE'), updateUser);
@@ -26,7 +27,6 @@ router.patch('/toggle-status/:id', authenticateToken, authorizeRoles('ADMIN', 'H
 router.post('/reset-password/:id', authenticateToken, authorizeRoles('ADMIN', 'HR'), adminResetPassword);
 router.post('/bulk-create', authenticateToken, authorizeRoles('ADMIN', 'HR'), bulkCreateUsers);
 router.post('/bulk-delete', authenticateToken, authorizeRoles('ADMIN'), bulkDeleteUsers);
-router.get('/audit-logs', authenticateToken, authorizeRoles('ADMIN'), getAuditLogs);
 
 // --- Profile Management (Authenticated) ---
 router.get('/profile/:id', authenticateToken, getProfile);

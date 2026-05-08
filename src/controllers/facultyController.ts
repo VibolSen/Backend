@@ -106,46 +106,57 @@ export const getReportsData = async (req: Request, res: Response) => {
   try {
     const { departmentId } = req.query;
     
-    const studentQuery: any = { role: 'STUDENT' };
+    const studentQuery: any = { role: 'STUDENT', isActive: true };
     if (departmentId && typeof departmentId === 'string' && departmentId.trim() !== '') {
         studentQuery.departmentId = departmentId;
     }
 
+    // 1. Fetch students (removed hard take: 20 limit for complete data)
     const students = await prisma.user.findMany({
       where: studentQuery,
       select: {
+          id: true,
           firstName: true,
           lastName: true,
           enrollments: { select: { progress: true } },
           attendances: { select: { status: true } }
       },
-      take: 20
+      take: 100
     });
 
-    const studentPerformance = students.map(s => {
-        const totalProgress = s.enrollments.reduce((sum, en) => sum + (en.progress || 0), 0);
-        const avgGrade = s.enrollments.length > 0 ? totalProgress / s.enrollments.length : 0;
-        return {
-            name: `${s.firstName} ${s.lastName}`.trim().substring(0, 10),
-            grade: avgGrade
-        };
-    }).filter(sp => sp.grade > 0);
+    // 2. Grade trajectories — include all enrolled students (even 0 progress)
+    const studentPerformance = students
+      .filter(s => s.enrollments.length > 0)
+      .map(s => {
+          const totalProgress = s.enrollments.reduce((sum, en) => sum + (en.progress || 0), 0);
+          const avgGrade = totalProgress / s.enrollments.length;
+          return {
+              name: `${s.firstName} ${s.lastName}`.trim().substring(0, 12),
+              grade: Math.round(avgGrade)
+          };
+      });
 
+    // 3. Engagement rate — attendance rate per student
     const classParticipation = students.map(s => {
         const totalAttendance = s.attendances.length;
         const presentCount = s.attendances.filter(a => a.status === 'PRESENT').length;
         const participationRate = totalAttendance > 0 ? (presentCount / totalAttendance) * 100 : 0;
         return {
-            name: `${s.firstName} ${s.lastName}`.trim().substring(0, 10),
+            name: `${s.firstName} ${s.lastName}`.trim().substring(0, 12),
             participation: Math.round(participationRate)
         };
-    });
+    }).filter(s => s.participation > 0);
 
-    const rawAttendances = await prisma.attendance.findMany({
-        where: { student: studentQuery },
-        orderBy: { date: 'asc' },
-        take: 300
-    });
+    // 4. Fix: Use studentIds list instead of invalid nested where query on Attendance
+    const studentIds = students.map(s => s.id);
+    
+    const rawAttendances = studentIds.length > 0
+      ? await prisma.attendance.findMany({
+            where: { studentId: { in: studentIds } },
+            orderBy: { date: 'asc' },
+            take: 500
+        })
+      : [];
 
     const trendsMap: Record<string, { present: number, absent: number }> = {};
     rawAttendances.forEach(a => {
@@ -165,7 +176,11 @@ export const getReportsData = async (req: Request, res: Response) => {
     res.json({
         studentPerformance,
         classParticipation,
-        attendanceTrends
+        attendanceTrends,
+        meta: {
+          totalStudents: students.length,
+          department: departmentId || 'all'
+        }
     });
   } catch (error) {
     console.error("Failed to fetch reports:", error);

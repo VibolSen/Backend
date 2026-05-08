@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma';
+import { AuthRequest } from '../middleware/auth';
+import { logAudit } from '../utils/audit';
 
 export const getCertificates = async (req: Request, res: Response) => {
   try {
@@ -51,7 +53,7 @@ export const getCertificateById = async (req: Request, res: Response) => {
   }
 };
 
-export const createCertificate = async (req: Request, res: Response) => {
+export const createCertificate = async (req: AuthRequest, res: Response) => {
   const { recipient, courseId, issueDate, expiryDate, studentId, title } = req.body;
   try {
     const certificate = await prisma.certificate.create({
@@ -68,13 +70,22 @@ export const createCertificate = async (req: Request, res: Response) => {
         student: true
       }
     });
+
+    if (req.user) {
+      await logAudit(req.user.userId, "CERTIFICATE_ISSUED", "CERTIFICATE", certificate.id, {
+        recipient,
+        course: certificate.course?.name,
+        studentId: studentId
+      });
+    }
+
     res.status(201).json(certificate);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 };
 
-export const updateCertificate = async (req: Request, res: Response) => {
+export const updateCertificate = async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   const { recipient, courseId, issueDate, expiryDate, studentId, title } = req.body;
   try {
@@ -93,25 +104,44 @@ export const updateCertificate = async (req: Request, res: Response) => {
         student: true
       }
     });
+
+    if (req.user) {
+      await logAudit(req.user.userId, "CERTIFICATE_UPDATED", "CERTIFICATE", String(id), {
+        recipient,
+        course: certificate.course?.name
+      });
+    }
+
     res.json(certificate);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 };
 
-export const deleteCertificate = async (req: Request, res: Response) => {
+export const deleteCertificate = async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
   try {
+    const certificate = await prisma.certificate.findUnique({
+      where: { id: String(id) }
+    });
+
     await prisma.certificate.delete({
       where: { id: String(id) }
     });
+
+    if (req.user) {
+      await logAudit(req.user.userId, "CERTIFICATE_REVOKED", "CERTIFICATE", String(id), {
+        recipient: certificate?.recipient
+      });
+    }
+
     res.json({ message: 'Certificate deleted successfully' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 };
 
-export const bulkIssueCertificates = async (req: Request, res: Response) => {
+export const bulkIssueCertificates = async (req: AuthRequest, res: Response) => {
   const { studentIds, courseId, issueDate, expiryDate } = req.body;
 
   if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
@@ -137,6 +167,13 @@ export const bulkIssueCertificates = async (req: Request, res: Response) => {
     const result = await prisma.certificate.createMany({
       data: certificateData
     });
+
+    if (req.user) {
+      await logAudit(req.user.userId, "BULK_CERTIFICATE_ISSUANCE", "CERTIFICATE", "MULTIPLE", {
+        count: result.count,
+        studentCount: studentIds.length
+      });
+    }
 
     res.status(201).json({ count: result.count });
   } catch (error: any) {

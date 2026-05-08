@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma';
+import { AuthRequest } from '../middleware/auth';
+import { logAudit } from '../utils/audit';
 
 export const getCourses = async (req: Request, res: Response) => {
   try {
@@ -182,7 +184,7 @@ export const getCourseById = async (req: Request, res: Response) => {
   }
 };
 
-export const createCourse = async (req: Request, res: Response) => {
+export const createCourse = async (req: AuthRequest, res: Response) => {
   try {
     const { name, leadById, credits } = req.body;
 
@@ -191,7 +193,6 @@ export const createCourse = async (req: Request, res: Response) => {
       return;
     }
 
-    // ... code to create course ...
     const newCourse = await prisma.course.create({
       data: {
         name,
@@ -200,6 +201,13 @@ export const createCourse = async (req: Request, res: Response) => {
       },
     });
 
+    if (req.user) {
+      await logAudit(req.user.userId, "COURSE_CREATED", "COURSE", newCourse.id, {
+        name,
+        credits
+      });
+    }
+
     res.status(201).json(newCourse);
   } catch (error: any) {
     console.error("Error creating course:", error);
@@ -207,7 +215,7 @@ export const createCourse = async (req: Request, res: Response) => {
   }
 };
 
-export const updateCourse = async (req: Request, res: Response) => {
+export const updateCourse = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { name, leadById, credits } = req.body;
@@ -221,6 +229,13 @@ export const updateCourse = async (req: Request, res: Response) => {
       },
     });
 
+    if (req.user) {
+      await logAudit(req.user.userId, "COURSE_UPDATED", "COURSE", String(id), {
+        name,
+        credits
+      });
+    }
+
     res.json(updatedCourse);
   } catch (error) {
     console.error("Error updating course:", error);
@@ -228,10 +243,22 @@ export const updateCourse = async (req: Request, res: Response) => {
   }
 };
 
-export const deleteCourse = async (req: Request, res: Response) => {
+export const deleteCourse = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+    
+    const course = await prisma.course.findUnique({
+      where: { id: String(id) }
+    });
+
     await prisma.course.delete({ where: { id: String(id) } });
+
+    if (req.user) {
+      await logAudit(req.user.userId, "COURSE_DELETED", "COURSE", String(id), {
+        name: course?.name
+      });
+    }
+
     res.json({ message: "Course deleted successfully" });
   } catch (error) {
     console.error("Error deleting course:", error);

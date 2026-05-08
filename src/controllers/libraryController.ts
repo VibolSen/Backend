@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import prisma from '../prisma';
 import { uploadToCloudinary } from '../middleware/upload';
+import { AuthRequest } from '../middleware/auth';
+import { logAudit } from '../utils/audit';
 
 export const getLibraryResources = async (req: Request, res: Response) => {
   try {
@@ -61,6 +63,13 @@ export const createLibraryResource = async (req: any, res: any) => {
         publicationYear: publicationYear ? parseInt(String(publicationYear)) : undefined
       },
     });
+    if (req.user) {
+      await logAudit(req.user.userId, "RESOURCE_UPLOADED", "LIBRARY", resource.id, {
+        title,
+        author
+      });
+    }
+
     res.status(201).json(resource);
   } catch (err) {
     console.error("Failed to create library resource:", err);
@@ -68,12 +77,24 @@ export const createLibraryResource = async (req: any, res: any) => {
   }
 };
 
-export const deleteLibraryResource = async (req: Request, res: Response) => {
+export const deleteLibraryResource = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
+    
+    const resource = await prisma.libraryResource.findUnique({
+      where: { id: String(id) }
+    });
+
     await prisma.libraryResource.delete({
       where: { id: String(id) },
     });
+
+    if (req.user) {
+      await logAudit(req.user.userId, "RESOURCE_DELETED", "LIBRARY", String(id), {
+        title: resource?.title
+      });
+    }
+
     res.status(204).send();
   } catch (err) {
     console.error("Failed to delete library resource:", err);
@@ -111,6 +132,12 @@ export const updateLibraryResource = async (req: any, res: any) => {
         publicationYear: publicationYear ? parseInt(String(publicationYear)) : undefined
       },
     });
+
+    if (req.user) {
+      await logAudit(req.user.userId, "RESOURCE_UPDATED", "LIBRARY", String(id), {
+        title
+      });
+    }
 
     res.json(updatedResource);
   } catch (err) {

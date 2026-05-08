@@ -3,6 +3,7 @@ import { AuthRequest } from '../middleware/auth';
 import prisma from '../prisma';
 import { KHQR, TAG, CURRENCY, COUNTRY } from 'ts-khqr';
 import { createInternalNotification } from './notificationController';
+import { logAudit } from '../utils/audit';
 
 // Invoices
 export const getInvoices = async (req: AuthRequest, res: Response) => {
@@ -109,15 +110,13 @@ export const createInvoice = async (req: AuthRequest, res: Response) => {
     });
 
     // --- 1. Audit Trail Logging ---
-    await prisma.auditLog.create({
-        data: {
-            action: "INVOICE_CREATED",
-            actorId: actorId,
-            target: "INVOICE",
-            targetId: invoice.id,
-            details: `Created new invoice for $${calculatedTotal} with ${formattedItems.length} items.`
-        }
-    });
+    if (req.user) {
+      await logAudit(req.user.userId, "INVOICE_CREATED", "INVOICE", invoice.id, {
+        studentId,
+        amount: calculatedTotal,
+        itemsCount: formattedItems.length
+      });
+    }
 
     // --- 2. Student Notification ---
     await prisma.notification.create({
@@ -176,15 +175,12 @@ export const updateInvoice = async (req: AuthRequest, res: Response) => {
         });
 
         // 4. Audit Trail
-        await prisma.auditLog.create({
-            data: {
-                action: "INVOICE_UPDATED",
-                actorId: actorId,
-                target: "INVOICE",
-                targetId: id as string,
-                details: `Revised invoice total to $${calculatedTotal}.`
-            }
-        });
+        if (req.user) {
+          await logAudit(req.user.userId, "INVOICE_UPDATED", "INVOICE", String(id), {
+            total: calculatedTotal,
+            studentId
+          });
+        }
 
         res.json(updatedInvoice);
     } catch (err: any) {
@@ -244,15 +240,9 @@ export const deleteInvoice = async (req: AuthRequest, res: Response) => {
         });
 
         // Audit Trail
-        await prisma.auditLog.create({
-            data: {
-                action: "INVOICE_DELETED",
-                actorId: actorId,
-                target: "INVOICE",
-                targetId: invoiceId,
-                details: `Permanently removed invoice record.`
-            }
-        });
+        if (req.user) {
+          await logAudit(req.user.userId, "INVOICE_DELETED", "INVOICE", invoiceId);
+        }
 
         res.status(204).send();
     } catch (err) {
@@ -283,6 +273,9 @@ export const createFee = async (req: AuthRequest, res: Response) => {
                 currency: currency || "USD"
             }
         });
+        if (req.user) {
+            await logAudit(req.user.userId, "FEE_CREATED", "FEE", fee.id, { name, amount });
+        }
         res.status(201).json(fee);
     } catch (err) {
         console.error("Failed to create fee:", err);
@@ -303,6 +296,9 @@ export const updateFee = async (req: AuthRequest, res: Response) => {
                 currency: currency || "USD"
             }
         });
+        if (req.user) {
+            await logAudit(req.user.userId, "FEE_UPDATED", "FEE", String(id), { name, amount });
+        }
         res.json(fee);
     } catch (err) {
         console.error("Failed to update fee:", err);
@@ -314,6 +310,9 @@ export const deleteFee = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         await prisma.fee.delete({ where: { id: String(id) } });
+        if (req.user) {
+            await logAudit(req.user.userId, "FEE_DELETED", "FEE", String(id));
+        }
         res.status(204).send();
     } catch (err) {
         console.error("Failed to delete fee:", err);
@@ -383,6 +382,13 @@ export const createPayment = async (req: AuthRequest, res: Response) => {
                  // Optional: Mark as partially paid if you have that status, or keep as SENT/OVERDUE
                  // For now, only marking PAID when full.
             }
+        if (req.user) {
+            await logAudit(req.user.userId, "PAYMENT_RECORDED", "PAYMENT", payment.id, { 
+                invoiceId, 
+                amount, 
+                method: paymentMethod 
+            });
+        }
         res.status(201).json(payment);
     } catch (err) {
         console.error("Failed to create payment:", err);
@@ -405,6 +411,9 @@ export const updatePayment = async (req: AuthRequest, res: Response) => {
                 notes
             }
         });
+        if (req.user) {
+            await logAudit(req.user.userId, "PAYMENT_UPDATED", "PAYMENT", String(id), { amount });
+        }
         res.json(payment);
     } catch (err) {
         console.error("Failed to update payment:", err);
@@ -417,6 +426,9 @@ export const deletePayment = async (req: AuthRequest, res: Response) => {
         const { id } = req.params;
         // Optionally revert invoice status if needed, but for now simple delete
         await prisma.payment.delete({ where: { id: String(id) } });
+        if (req.user) {
+            await logAudit(req.user.userId, "PAYMENT_DELETED", "PAYMENT", String(id));
+        }
         res.status(204).send();
     } catch (err) {
         console.error("Failed to delete payment:", err);
@@ -448,6 +460,9 @@ export const createExpense = async (req: AuthRequest, res: Response) => {
                 date: new Date(date)
             }
         });
+        if (req.user) {
+            await logAudit(req.user.userId, "EXPENSE_CREATED", "EXPENSE", expense.id, { category, amount });
+        }
         res.status(201).json(expense);
     } catch (err) {
         console.error("Failed to create expense:", err);
@@ -468,6 +483,9 @@ export const updateExpense = async (req: AuthRequest, res: Response) => {
                 date: new Date(date)
             }
         });
+        if (req.user) {
+            await logAudit(req.user.userId, "EXPENSE_UPDATED", "EXPENSE", String(id), { category, amount });
+        }
         res.json(expense);
     } catch (err) {
         console.error("Failed to update expense:", err);
@@ -481,6 +499,9 @@ export const deleteExpense = async (req: AuthRequest, res: Response) => {
         await prisma.expense.delete({
             where: { id: String(id) }
         });
+        if (req.user) {
+            await logAudit(req.user.userId, "EXPENSE_DELETED", "EXPENSE", String(id));
+        }
         res.status(204).send();
     } catch (err) {
         console.error("Failed to delete expense:", err);
@@ -873,6 +894,10 @@ export const updateUserBenefit = async (req: AuthRequest, res: Response) => {
             create: { userId, baseSalary, bonus, allowance, deduction, currency }
         });
         
+        if (req.user) {
+            await logAudit(req.user.userId, "USER_BENEFIT_UPDATED", "USER", userId, { baseSalary, currency });
+        }
+        
         res.json(benefit);
     } catch (err) {
         console.error("Failed to update benefit:", err);
@@ -933,6 +958,13 @@ export const generatePayrolls = async (req: AuthRequest, res: Response) => {
             generatedPayrolls.push(payroll);
         }
         
+        if (req.user) {
+            await logAudit(req.user.userId, "BULK_PAYROLL_GENERATION", "PAYROLL", "MULTIPLE", { 
+                period, 
+                count: generatedPayrolls.length 
+            });
+        }
+        
         res.status(201).json({ 
             message: `Generated ${generatedPayrolls.length} payroll records for ${period}`,
             payrolls: generatedPayrolls 
@@ -956,6 +988,10 @@ export const updatePayrollStatus = async (req: AuthRequest, res: Response) => {
                 transactionHash 
             }
         });
+        
+        if (req.user) {
+            await logAudit(req.user.userId, "PAYROLL_STATUS_UPDATED", "PAYROLL", String(id), { status });
+        }
         
         res.json(payroll);
     } catch (err) {
@@ -995,6 +1031,10 @@ export const createBudget = async (req: AuthRequest, res: Response) => {
             }
         });
         
+        if (req.user) {
+            await logAudit(req.user.userId, "BUDGET_CREATED", "BUDGET", budget.id, { departmentId, amount, period });
+        }
+        
         res.status(201).json(budget);
     } catch (err) {
         console.error("Failed to create budget:", err);
@@ -1022,6 +1062,10 @@ export const addBudgetItem = async (req: AuthRequest, res: Response) => {
                 spent: { increment: amount }
             }
         });
+        
+        if (req.user) {
+            await logAudit(req.user.userId, "BUDGET_ITEM_ADDED", "BUDGET", budgetId, { description, amount });
+        }
         
         res.status(201).json(item);
     } catch (err) {
@@ -1218,14 +1262,9 @@ export const bulkDeletePayments = async (req: AuthRequest, res: Response) => {
         });
 
         // Audit Trail
-        await prisma.auditLog.create({
-            data: {
-                action: "PAYMENT_BULK_DELETED",
-                actorId: actorId,
-                target: "PAYMENT",
-                details: `Purged ${deleted.count} payments from the treasury registry.`
-            }
-        });
+        if (req.user) {
+          await logAudit(req.user.userId, "PAYMENT_BULK_DELETED", "PAYMENT", "MULTIPLE", { count: deleted.count });
+        }
 
         res.json({ success: true, count: deleted.count });
     } catch (err: any) {
@@ -1251,14 +1290,9 @@ export const bulkDeleteExpenses = async (req: AuthRequest, res: Response) => {
         });
 
         // Audit Trail
-        await prisma.auditLog.create({
-            data: {
-                action: "EXPENSE_BULK_DELETED",
-                actorId: actorId,
-                target: "EXPENSE",
-                details: `Voided ${deleted.count} expense records from the treasury registry.`
-            }
-        });
+        if (req.user) {
+          await logAudit(req.user.userId, "EXPENSE_BULK_DELETED", "EXPENSE", "MULTIPLE", { count: deleted.count });
+        }
 
         res.json({ success: true, count: deleted.count });
     } catch (err: any) {
@@ -1306,14 +1340,9 @@ export const bulkDeleteInvoices = async (req: AuthRequest, res: Response) => {
         });
 
         // Audit Trail
-        await prisma.auditLog.create({
-            data: {
-                action: "INVOICE_BULK_DELETED",
-                actorId: actorId,
-                target: "INVOICE",
-                details: `Voided ${deleted.count} invoices from the financial registry.`
-            }
-        });
+        if (req.user) {
+          await logAudit(req.user.userId, "INVOICE_BULK_DELETED", "INVOICE", "MULTIPLE", { count: deleted.count });
+        }
 
         res.json({ success: true, count: deleted.count });
     } catch (err: any) {
@@ -1339,14 +1368,9 @@ export const bulkDeleteFees = async (req: AuthRequest, res: Response) => {
         });
 
         // Audit Trail
-        await prisma.auditLog.create({
-            data: {
-                action: "FEE_BULK_DELETED",
-                actorId: actorId,
-                target: "FEE",
-                details: `Purged ${deleted.count} fee structures from the financial catalog.`
-            }
-        });
+        if (req.user) {
+          await logAudit(req.user.userId, "FEE_BULK_DELETED", "FEE", "MULTIPLE", { count: deleted.count });
+        }
 
         res.json({ success: true, count: deleted.count });
     } catch (err: any) {

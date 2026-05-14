@@ -151,6 +151,28 @@ export const createSchedule = async (req: Request, res: Response) => {
         if (room) locationString = room.name;
     }
 
+    // Generate sessions (recurring or single)
+    const generatedSessions = [];
+    const start = new Date(startDate);
+    const end = isRecurring && endDate ? new Date(endDate) : start;
+    
+    let current = new Date(start);
+    while (current <= end) {
+        const dayName = current.toLocaleDateString('en-US', { weekday: 'long' });
+        if (!isRecurring || (daysOfWeek || []).includes(dayName)) {
+            const dateStr = current.toISOString().split('T')[0];
+            (sessions || []).forEach((s: any) => {
+                generatedSessions.push({
+                    startTime: new Date(`${dateStr}T${s.startTime}:00`),
+                    endTime: new Date(`${dateStr}T${s.endTime}:00`),
+                });
+            });
+        }
+        current.setDate(current.getDate() + 1);
+        // Safety break to prevent infinite loops if something goes wrong
+        if (generatedSessions.length > 500) break; 
+    }
+
     const newSchedule = await (prisma.schedule as any).create({
       data: {
         title,
@@ -165,10 +187,7 @@ export const createSchedule = async (req: Request, res: Response) => {
         location: locationString,
         roomId,
         sessions: {
-            create: (sessions || []).map((s: any) => ({
-                startTime: new Date(`${startDate || new Date().toISOString().split('T')[0]}T${s.startTime}:00`),
-                endTime: new Date(`${startDate || new Date().toISOString().split('T')[0]}T${s.endTime}:00`),
-            }))
+            create: generatedSessions
         }
       },
       include: {
@@ -219,6 +238,27 @@ export const updateSchedule = async (req: Request, res: Response) => {
         where: { scheduleId: String(id) }
     });
 
+    // Re-generate sessions
+    const generatedSessions = [];
+    const start = new Date(startDate);
+    const end = isRecurring && endDate ? new Date(endDate) : start;
+    
+    let current = new Date(start);
+    while (current <= end) {
+        const dayName = current.toLocaleDateString('en-US', { weekday: 'long' });
+        if (!isRecurring || (daysOfWeek || []).includes(dayName)) {
+            const dateStr = current.toISOString().split('T')[0];
+            (sessions || []).forEach((s: any) => {
+                generatedSessions.push({
+                    startTime: new Date(`${dateStr}T${s.startTime}:00`),
+                    endTime: new Date(`${dateStr}T${s.endTime}:00`),
+                });
+            });
+        }
+        current.setDate(current.getDate() + 1);
+        if (generatedSessions.length > 500) break;
+    }
+
     const updatedSchedule = await (prisma.schedule as any).update({
       where: { id: String(id) },
       data: {
@@ -234,10 +274,7 @@ export const updateSchedule = async (req: Request, res: Response) => {
         location: locationString,
         roomId,
         sessions: {
-            create: (sessions || []).map((s: any) => ({
-                startTime: new Date(`${startDate || new Date().toISOString().split('T')[0]}T${s.startTime}:00`),
-                endTime: new Date(`${startDate || new Date().toISOString().split('T')[0]}T${s.endTime}:00`),
-            }))
+            create: generatedSessions
         }
       },
       include: {

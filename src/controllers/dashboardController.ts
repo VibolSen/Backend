@@ -408,18 +408,33 @@ export const getStudentStats = async (req: any, res: Response) => {
       }))
     ).sort((a: any, b: any) => a.startTime.getTime() - b.startTime.getTime()).slice(0, 5);
 
-    // 4. Fetch Recent Grades
-    const recentGrades = await prisma.submission.findMany({
-      where: {
-        studentId: targetStudentId,
-        status: 'GRADED'
-      },
-      take: 5,
-      orderBy: { submittedAt: 'desc' },
-      include: {
-        assignment: { select: { title: true } }
-      }
-    });
+    // 4. Fetch Recent Grades (Both Assignments and Exams)
+    const [recentAssignmentGrades, recentExamGrades] = await Promise.all([
+      prisma.submission.findMany({
+        where: { studentId: targetStudentId, status: 'GRADED' },
+        take: 5,
+        orderBy: { submittedAt: 'desc' },
+        include: { assignment: { select: { title: true } } }
+      }),
+      prisma.examSubmission.findMany({
+        where: { studentId: targetStudentId, status: 'GRADED' },
+        take: 5,
+        orderBy: { submittedAt: 'desc' },
+        include: { exam: { select: { title: true } } }
+      })
+    ]);
+
+    // Combine, add type flag, and sort by date
+    const recentGrades = [
+      ...recentAssignmentGrades.map(g => ({ ...g, type: 'ASSIGNMENT', displayTitle: g.assignment?.title })),
+      ...recentExamGrades.map(g => ({ ...g, type: 'EXAM', displayTitle: g.exam?.title }))
+    ]
+    .sort((a, b) => {
+      const dateA = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
+      const dateB = b.submittedAt ? new Date(b.submittedAt).getTime() : 0;
+      return dateB - dateA;
+    })
+    .slice(0, 5);
 
     const totalInvoiced = pendingInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
 
